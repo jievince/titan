@@ -15,7 +15,7 @@ struct TcpConn;
 struct TcpServer;
 struct IdleIdImp;
 struct EventsImp;
-struct EventBase;
+struct EventLoop;
 typedef std::unique_ptr<IdleIdImp> IdleId;
 typedef std::pair<int64_t, int64_t> TimerId;
 

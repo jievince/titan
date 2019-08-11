@@ -176,14 +176,14 @@ void HttpConnPtr::sendFile(const string &filename) const {
     sendResponse();
 }
 
-void HttpConnPtr::onHttpMsg(const HttpCallBack &cb) const {
-    tcp->onRead([cb](const TcpConnPtr &con) {
+void HttpConnPtr::onHttpMsg(const HttpCallback &cb) const {
+    tcp->setReadCallback([cb](const TcpConnPtr &con) {
         HttpConnPtr hcon(con);
         hcon.handleRead(cb);
     });
 }
 
-void HttpConnPtr::handleRead(const HttpCallBack &cb) const {
+void HttpConnPtr::handleRead(const HttpCallback &cb) const {
     if (!tcp->isClient()) {  // server
         HttpRequest &req = getRequest();
         HttpMsg::Result r = req.tryDecode(tcp->getInput());
@@ -228,7 +228,7 @@ void HttpConnPtr::logOutput(const char *title) const {
     trace("%s:\n%.*s", title, (int) o.size(), o.data());
 }
 
-HttpServer::HttpServer(EventBases *bases) : TcpServer(bases) {
+HttpServer::HttpServer(EventLoopBases *bases) : TcpServer(bases) {
     defcb_ = [](const HttpConnPtr &con) {
         HttpResponse &resp = con.getResponse();
         resp.status = 404;
@@ -237,7 +237,7 @@ HttpServer::HttpServer(EventBases *bases) : TcpServer(bases) {
         con.sendResponse();
     };
     conncb_ = [] { return TcpConnPtr(new TcpConn); };
-    onConnCreate([this]() {
+    setConnCreateCallback([this]() {
         HttpConnPtr hcon(conncb_());
         hcon.onHttpMsg([this](const HttpConnPtr &hcon) {
             HttpRequest &req = hcon.getRequest();

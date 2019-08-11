@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <map>
 
 using namespace std;
 
@@ -63,6 +64,13 @@ std::string util::readableTime(time_t t) {
 int util::addFdFlag(int fd, int flag) {
     int ret = fcntl(fd, F_GETFD);
     return fcntl(fd, F_SETFD, ret | flag);
+}
+
+std::map<int, std::function<void()>> Signal::handlers{};
+
+void Signal::signal(int sig, const function<void()> &handler) {
+    handlers[sig] = handler;
+    ::signal(sig, signal_handler);
 }
 
 }  // namespace titan

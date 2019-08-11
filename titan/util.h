@@ -1,10 +1,12 @@
 #pragma once
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <functional>
 #include <string>
 #include <utility>
 #include <vector>
+#include <map>
 
 namespace titan {
 
@@ -40,6 +42,15 @@ struct ExitCaller : private noncopyable {
 
    private:
     std::function<void()> functor_;
+};
+
+struct Signal {
+    static void signal(int sig, const std::function<void()> &handler);
+
+    static std::map<int, std::function<void()>> handlers;
+    static void signal_handler(int sig) {
+        handlers[sig]();
+    }
 };
 
 }  // namespace titan

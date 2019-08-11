@@ -3,17 +3,18 @@
 #include <poll.h>
 #include "logging.h"
 #include "poller.h"
+#include "channel.h"
 
 using namespace std;
 namespace titan {
 
-void titanUnregisterIdle(EventBase *base, const IdleId &idle);
-void titanUpdateIdle(EventBase *base, const IdleId &idle);
+void titanUnregisterIdle(EventLoop *base, const IdleId &idle);
+void titanUpdateIdle(EventLoop *base, const IdleId &idle);
 
-void TcpConn::attach(EventBase *base, int fd, Ip4Addr local, Ip4Addr peer) {
+void TcpConn::attach(EventLoop *base, int fd, Ip4Addr local, Ip4Addr peer) {
     fatalif((destPort_ <= 0 && state_ != State::Invalid) || (destPort_ >= 0 && state_ != State::Handshaking),
             "you should use a new TcpConn to attach. state: %d", state_);
-    base_ = base;
+    loop_ = base;
     state_ = State::Handshaking;
     local_ = local;
     peer_ = peer;
@@ -21,11 +22,11 @@ void TcpConn::attach(EventBase *base, int fd, Ip4Addr local, Ip4Addr peer) {
     channel_ = new Channel(base, fd, kWriteEvent | kReadEvent);
     trace("tcp constructed %s - %s fd: %d", local_.toString().c_str(), peer_.toString().c_str(), fd);
     TcpConnPtr con = shared_from_this();
-    con->channel_->onRead([=] { con->handleRead(con); });
-    con->channel_->onWrite([=] { con->handleWrite(con); });
+    con->channel_->setReadCallback([=] { con->handleRead(con); });
+    con->channel_->setWriteCallback([=] { con->handleWrite(con); });
 }
 
-void TcpConn::connect(EventBase *base, const string &host, unsigned short port, int timeout, const string &localip) {
+void TcpConn::connect(EventLoop *base, const string &host, unsigned short port, int timeout, const string &localip) {
     fatalif(state_ != State::Invalid && state_ != State::Closed && state_ != State::Failed, "current state is bad state to connect. state: %d", state_);
     destHost_ = host;
     destPort_ = port;
@@ -33,11 +34,8 @@ void TcpConn::connect(EventBase *base, const string &host, unsigned short port, 
     connectedTime_ = util::timeMilli();
     localIp_ = localip;
     Ip4Addr addr(host, port);
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     fatalif(fd < 0, "socket failed %d %s", errno, strerror(errno));
-    net::setNonBlock(fd);
-    int t = util::addFdFlag(fd, FD_CLOEXEC);
-    fatalif(t, "addFdFlag FD_CLOEXEC failed %d %s", t, strerror(t));
     int r = 0;
     if (localip.size()) {
         Ip4Addr addr(localip, 0);
@@ -74,7 +72,7 @@ void TcpConn::connect(EventBase *base, const string &host, unsigned short port, 
 void TcpConn::close() {
     if (channel_) {
         TcpConnPtr con = shared_from_this();
-        getBase()->safeCall([con] {
+        getLoop()->safeCall([con] {
             if (con->channel_)
                 con->channel_->close();
         });
@@ -91,16 +89,16 @@ void TcpConn::cleanup(const TcpConnPtr &con) {
         state_ = State::Closed;
     }
     trace("tcp closing %s - %s fd %d %d", local_.toString().c_str(), peer_.toString().c_str(), channel_ ? channel_->fd() : -1, errno);
-    getBase()->cancel(timeoutId_);
+    getLoop()->cancel(timeoutId_);
     if (statecb_) {
         statecb_(con);
     }
-    if (reconnectInterval_ >= 0 && !getBase()->exited()) {  // reconnect
+    if (reconnectInterval_ >= 0 && !getLoop()->exited()) {  // reconnect
         reconnect();
         return;
     }
     for (auto &idle : idleIds_) {
-        titanUnregisterIdle(getBase(), idle);
+        titanUnregisterIdle(getLoop(), idle);
     }
     // channel may have hold TcpConnPtr, set channel_ to NULL before delete
     readcb_ = writablecb_ = statecb_ = nullptr;
@@ -124,13 +122,13 @@ void TcpConn::handleRead(const TcpConnPtr &con) {
             continue;
         } else if (rd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
             for (auto &idle : idleIds_) {
-                titanUpdateIdle(getBase(), idle);
+                titanUpdateIdle(getLoop(), idle);
             }
             if (readcb_ && input_.size()) {
                 readcb_(con);
             }
             break;
-        } else if (channel_->fd() == -1 || rd == 0 || rd == -1) {
+        } else if (channel_->fd() == -1 || rd == 0 || rd == -1) { // titan只有一种关闭连接的方法: 被动关闭. 即对方先关闭连接, 本地read返回0
             cleanup(con);
             break;
         } else {  // rd > 0
@@ -169,11 +167,11 @@ void TcpConn::handleWrite(const TcpConnPtr &con) {
     } else if (state_ == State::Connected) {
         ssize_t sended = isend(output_.begin(), output_.size());
         output_.consume(sended);
-        if (output_.empty() && writablecb_) {
+        if (output_.empty() && writablecb_) { // WirteCompleteCallback
             writablecb_(con);
         }
         if (output_.empty() && channel_->writeEnabled()) {  // writablecb_ may write something
-            channel_->enableWrite(false);
+            channel_->enableWrite(false); // 一旦发送完毕数据, 立刻停止writable事件, 避免busy loop
         }
     } else {
         error("handle write unexpected");
@@ -182,7 +180,7 @@ void TcpConn::handleWrite(const TcpConnPtr &con) {
 
 ssize_t TcpConn::isend(const char *buf, size_t len) {
     size_t sended = 0;
-    while (len > sended) {
+    while (sended < len) {
         ssize_t wd = writeImp(channel_->fd(), buf + sended, len - sended);
         trace("channel %lld fd %d write %ld bytes", (long long) channel_->id(), channel_->fd(), wd);
         if (wd > 0) {
@@ -192,7 +190,7 @@ ssize_t TcpConn::isend(const char *buf, size_t len) {
             continue;
         } else if (wd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
             if (!channel_->writeEnabled()) {
-                channel_->enableWrite(true);
+                channel_->enableWrite(true); // 开始关注poller的可写事件
             }
             break;
         } else {
@@ -238,10 +236,10 @@ void TcpConn::send(const char *buf, size_t len) {
     }
 }
 
-void TcpConn::onMsg(CodecBase *codec, const MsgCallBack &cb) {
+void TcpConn::setMsgCallback(CodecBase *codec, const MsgCallback &cb) {
     assert(!readcb_);
     codec_.reset(codec);
-    onRead([cb](const TcpConnPtr &con) {
+    setReadCallback([cb](const TcpConnPtr &con) {
         int r = 1;
         while (r) {
             Slice msg;
@@ -263,17 +261,15 @@ void TcpConn::sendMsg(Slice msg) {
     sendOutput();
 }
 
-TcpServer::TcpServer(EventBases *bases) : base_(bases->allocBase()), bases_(bases), listen_channel_(NULL), createcb_([] { return TcpConnPtr(new TcpConn); }) {}
+TcpServer::TcpServer(EventLoopBases *bases) : loop_(bases->allocEventLoop()), bases_(bases), listen_channel_(NULL), createcb_([] { return TcpConnPtr(new TcpConn); }) {}
 
 int TcpServer::bind(const std::string &host, unsigned short port, bool reusePort) {
     addr_ = Ip4Addr(host, port);
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    int r = net::setReuseAddr(fd);
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    int r = net::setReuseAddr(fd); // net::setReuseAddr(fd, true)
     fatalif(r, "set socket reuse option failed");
     r = net::setReusePort(fd, reusePort);
     fatalif(r, "set socket reuse port option failed");
-    r = util::addFdFlag(fd, FD_CLOEXEC);
-    fatalif(r, "addFdFlag FD_CLOEXEC failed");
     r = ::bind(fd, (struct sockaddr *) &addr_.getAddr(), sizeof(struct sockaddr));
     if (r) {
         close(fd);
@@ -283,12 +279,12 @@ int TcpServer::bind(const std::string &host, unsigned short port, bool reusePort
     r = listen(fd, 20);
     fatalif(r, "listen failed %d %s", errno, strerror(errno));
     info("fd %d listening at %s", fd, addr_.toString().c_str());
-    listen_channel_ = new Channel(base_, fd, kReadEvent);
-    listen_channel_->onRead([this] { handleAccept(); });
+    listen_channel_ = new Channel(loop_, fd, kReadEvent);
+    listen_channel_->setReadCallback([this] { handleAccept(); });
     return 0;
 }
 
-TcpServerPtr TcpServer::startServer(EventBases *bases, const std::string &host, unsigned short port, bool reusePort) {
+TcpServerPtr TcpServer::startServer(EventLoopBases *bases, const std::string &host, unsigned short port, bool reusePort) {
     TcpServerPtr p(new TcpServer(bases));
     int r = p->bind(host, port, reusePort);
     if (r) {
@@ -302,8 +298,8 @@ void TcpServer::handleAccept() {
     socklen_t rsz = sizeof(raddr);
     int lfd = listen_channel_->fd();
     int cfd;
-    while (lfd >= 0 && (cfd = accept(lfd, (struct sockaddr *) &raddr, &rsz)) >= 0) {
-        sockaddr_in peer, local;
+    while (lfd >= 0 && (cfd = accept(lfd, (struct sockaddr *) &raddr, &rsz)) >= 0) { // accept策略: 读一个, 读N个, 读完
+        sockaddr_in local, peer;
         socklen_t alen = sizeof(peer);
         int r = getpeername(cfd, (sockaddr *) &peer, &alen);
         if (r < 0) {
@@ -317,24 +313,16 @@ void TcpServer::handleAccept() {
         }
         r = util::addFdFlag(cfd, FD_CLOEXEC);
         fatalif(r, "addFdFlag FD_CLOEXEC failed");
-        EventBase *b = bases_->allocBase();
-        auto addcon = [=] {
-            TcpConnPtr con = createcb_();
-            con->attach(b, cfd, local, peer);
-            if (statecb_) {
-                con->onState(statecb_);
-            }
-            if (readcb_) {
-                con->onRead(readcb_);
-            }
-            if (msgcb_) {
-                con->onMsg(codec_->clone(), msgcb_);
-            }
-        };
-        if (b == base_) {
-            addcon();
+        /* 为cfd连接分配的EventLoop有2种策略: 
+            a). 程序只用了一个EventLoop, 在这一个线程的一个EventLoop上同时处理accept新连接和在已有的连接上read/write
+            b). EventLoopThreadPool. 一个主IO线程的EventLoop用来处理新连接, 并且为每个新连接分配一个独占的EventLoop, 
+             并在一个新的线程上运行这个EventLoop 
+        */
+        EventLoop *newLoop = bases_->allocEventLoop(); 
+        if (newLoop == loop_) { 
+            addNewConn(newLoop, cfd, local, peer);
         } else {
-            b->safeCall(move(addcon));
+            newLoop->safeCall(std::bind(&TcpServer::addNewConn, this, newLoop, cfd, local, peer)); // 在新连接自己的EventLoop上执行addcon任务
         }
     }
     if (lfd >= 0 && errno != EAGAIN && errno != EINTR) {
@@ -342,23 +330,18 @@ void TcpServer::handleAccept() {
     }
 }
 
-HSHAPtr HSHA::startServer(EventBase *base, const std::string &host, unsigned short port, int threads) {
-    HSHAPtr p = HSHAPtr(new HSHA(threads));
-    p->server_ = TcpServer::startServer(base, host, port);
-    return p->server_ ? p : NULL;
-}
-
-void HSHA::onMsg(CodecBase *codec, const RetMsgCallBack &cb) {
-    server_->onConnMsg(codec, [this, cb](const TcpConnPtr &con, Slice msg) {
-        std::string input = msg;
-        threadPool_.addTask([=] {
-            std::string output = cb(con, input);
-            server_->getBase()->safeCall([=] {
-                if (output.size())
-                    con->sendMsg(output);
-            });
-        });
-    });
-}
+void TcpServer::addNewConn(EventLoop *newLoop, int cfd, sockaddr_in local, sockaddr_in peer) {
+    TcpConnPtr con = createcb_();
+    con->attach(newLoop, cfd, local, peer);
+    if (statecb_) {
+        con->setStateCallback(statecb_);
+    }
+    if (readcb_) {
+        con->setReadCallback(readcb_);
+    }
+    if (msgcb_) {
+        con->setMsgCallback(codec_->clone(), msgcb_);
+    }
+};
 
 }  // namespace titan

@@ -1,17 +1,22 @@
 .PHONY : install uninstall clean
 
+CXX = g++
+CXXFLAGS = -I. -pthread -DOS_LINUX -DLITTLE_ENDIAN=1 -std=c++11 -g2
+LDFLAGS = -pthread -L/home/jackw/Documents/lambda/titan
+
 src = $(wildcard titan/*.cpp)
 obj = $(src:%.cpp=%.o)
-target = libtitan.a
-CXX=g++
-CXXFLAGS= -pthread -DOS_LINUX -DLITTLE_ENDIAN=1 -std=c++11 -g2
+examples_src = $(wildcard examples/*.cpp)
+examples = $(examples_src:.cpp=)
 
-$(target): $(obj)
+library = libtitan.a
+targets = $(library) $(examples) 
+
+default: $(targets)
+
+$(library): $(obj)
 	rm -f $@
 	ar -rs $@ $(obj)
-
-$(obj): $(src)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 install: libtitan.a
 	mkdir -p /usr/local/include/titan
@@ -22,5 +27,11 @@ uninstall:
 	rm -rf /usr/local/include/titan /usr/local/lib/libtitan.a
 
 clean:
-	-rm -f $(target)
-	-rm -f $(obj)
+	-rm -f $(targets)
+	-rm -f */*.o
+
+.cpp.o:
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+.cpp:
+	$(CXX) -o $@ $< $(CXXFLAGS) $(library)

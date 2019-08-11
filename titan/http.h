@@ -88,7 +88,7 @@ struct HttpConnPtr {
     TcpConn *operator->() const { return tcp.get(); }
     bool operator<(const HttpConnPtr &con) const { return tcp < con.tcp; }
 
-    typedef std::function<void(const HttpConnPtr &)> HttpCallBack;
+    typedef std::function<void(const HttpConnPtr &)> HttpCallback;
 
     HttpRequest &getRequest() const { return tcp->internalCtx_.context<HttpContext>().req; }
     HttpResponse &getResponse() const { return tcp->internalCtx_.context<HttpContext>().resp; }
@@ -111,34 +111,34 @@ struct HttpConnPtr {
     void sendFile(const std::string &filename) const;
     void clearData() const;
 
-    void onHttpMsg(const HttpCallBack &cb) const;
+    void onHttpMsg(const HttpCallback &cb) const;
 
    protected:
     struct HttpContext {
         HttpRequest req;
         HttpResponse resp;
     };
-    void handleRead(const HttpCallBack &cb) const;
+    void handleRead(const HttpCallback &cb) const;
     void logOutput(const char *title) const;
 };
 
-typedef HttpConnPtr::HttpCallBack HttpCallBack;
+typedef HttpConnPtr::HttpCallback HttpCallback;
 
 // http服务器
 struct HttpServer : public TcpServer {
-    HttpServer(EventBases *base);
+    HttpServer(EventLoopBases *base);
     template <class Conn = TcpConn>
     void setConnType() {
         conncb_ = [] { return TcpConnPtr(new Conn); };
     }
-    void onGet(const std::string &uri, const HttpCallBack &cb) { cbs_["GET"][uri] = cb; }
-    void onRequest(const std::string &method, const std::string &uri, const HttpCallBack &cb) { cbs_[method][uri] = cb; }
-    void onDefault(const HttpCallBack &cb) { defcb_ = cb; }
+    void onGet(const std::string &uri, const HttpCallback &cb) { cbs_["GET"][uri] = cb; }
+    void onRequest(const std::string &method, const std::string &uri, const HttpCallback &cb) { cbs_[method][uri] = cb; }
+    void onDefault(const HttpCallback &cb) { defcb_ = cb; }
 
    private:
-    HttpCallBack defcb_;
+    HttpCallback defcb_;
     std::function<TcpConnPtr()> conncb_;
-    std::map<std::string, std::map<std::string, HttpCallBack>> cbs_;
+    std::map<std::string, std::map<std::string, HttpCallback>> cbs_;
 };
 
 }  // namespace titan
