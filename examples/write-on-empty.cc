@@ -38,7 +38,7 @@ int main(int argc, const char *argv[]) {
     thread th([] {  //模拟了一个客户端，连接服务器后，接收服务器发送过来的数据
         EventLoop base2;
         TcpConnPtr con = TcpConn::createConnection(&base2, "127.0.0.1", 2099);
-        con->onRead([](const TcpConnPtr &con) {
+        con->setReadCallback([](const TcpConnPtr &con) {
             info("recv %lu bytes", con->getInput().size());
             con->getInput().clear();
             sleep(1);

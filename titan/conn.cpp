@@ -8,28 +8,29 @@
 using namespace std;
 namespace titan {
 
-void titanUnregisterIdle(EventLoop *base, const IdleId &idle);
-void titanUpdateIdle(EventLoop *base, const IdleId &idle);
+void titanUnregisterIdle(EventLoop *loop, const IdleId &idle);
+void titanUpdateIdle(EventLoop *loop, const IdleId &idle);
 
-void TcpConn::attach(EventLoop *base, int fd, Ip4Addr local, Ip4Addr peer) {
-    fatalif((destPort_ <= 0 && state_ != State::Invalid) || (destPort_ >= 0 && state_ != State::Handshaking),
+void TcpConn::attach(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer) {
+    fatalif((!isClient_ && state_ != State::Invalid) || (isClient_ && state_ != State::Handshaking),
             "you should use a new TcpConn to attach. state: %d", state_);
-    loop_ = base;
+    loop_ = loop;
     state_ = State::Handshaking;
     local_ = local;
     peer_ = peer;
     delete channel_;
-    channel_ = new Channel(base, fd, kWriteEvent | kReadEvent);
+    channel_ = new Channel(loop, fd, kWriteEvent | kReadEvent);
     trace("tcp constructed %s - %s fd: %d", local_.toString().c_str(), peer_.toString().c_str(), fd);
     TcpConnPtr con = shared_from_this();
     con->channel_->setReadCallback([=] { con->handleRead(con); });
     con->channel_->setWriteCallback([=] { con->handleWrite(con); });
 }
 
-void TcpConn::connect(EventLoop *base, const string &host, unsigned short port, int timeout, const string &localip) {
+void TcpConn::connect(EventLoop *loop, const string &host, unsigned short port, int timeout, const string &localip) {
     fatalif(state_ != State::Invalid && state_ != State::Closed && state_ != State::Failed, "current state is bad state to connect. state: %d", state_);
     destHost_ = host;
     destPort_ = port;
+    isClient_ = true;
     connectTimeout_ = timeout;
     connectedTime_ = util::timeMilli();
     localIp_ = localip;
@@ -58,10 +59,10 @@ void TcpConn::connect(EventLoop *base, const string &host, unsigned short port, 
         }
     }
     state_ = State::Handshaking;
-    attach(base, fd, Ip4Addr(local), addr);
+    attach(loop, fd, Ip4Addr(local), addr);
     if (timeout) {
         TcpConnPtr con = shared_from_this();
-        timeoutId_ = base->runAfter(timeout, [con] {
+        timeoutId_ = loop->runAfter(timeout, [con] {
             if (con->getState() == Handshaking) {
                 con->channel_->close();
             }
@@ -261,7 +262,8 @@ void TcpConn::sendMsg(Slice msg) {
     sendOutput();
 }
 
-TcpServer::TcpServer(EventLoopBases *bases) : loop_(bases->allocEventLoop()), bases_(bases), listen_channel_(NULL), createcb_([] { return TcpConnPtr(new TcpConn); }) {}
+TcpServer::TcpServer(EventLoopBases *bases) 
+        : loop_(bases->allocEventLoop()), bases_(bases), listen_channel_(NULL), createcb_([] { return TcpConnPtr(new TcpConn); }) {}
 
 int TcpServer::bind(const std::string &host, unsigned short port, bool reusePort) {
     addr_ = Ip4Addr(host, port);
@@ -330,9 +332,9 @@ void TcpServer::handleAccept() {
     }
 }
 
-void TcpServer::addNewConn(EventLoop *newLoop, int cfd, sockaddr_in local, sockaddr_in peer) {
+void TcpServer::addNewConn(EventLoop *newLoop, int fd, sockaddr_in local, sockaddr_in peer) {
     TcpConnPtr con = createcb_();
-    con->attach(newLoop, cfd, local, peer);
+    con->attach(newLoop, fd, local, peer);
     if (statecb_) {
         con->setStateCallback(statecb_);
     }

@@ -191,7 +191,7 @@ void titanUpdateIdle(EventLoop *loop, const IdleId &idle) {
 }
 
 TcpConn::TcpConn()
-    : loop_(NULL), channel_(NULL), state_(State::Invalid), destPort_(-1), connectTimeout_(0), reconnectInterval_(-1), connectedTime_(util::timeMilli()) {}
+    : loop_(NULL), channel_(NULL), state_(State::Invalid), isClient_(false), connectTimeout_(0), reconnectInterval_(-1), connectedTime_(util::timeMilli()) {}
 
 TcpConn::~TcpConn() {
     trace("tcp destroyed %s - %s", local_.toString().c_str(), peer_.toString().c_str());
@@ -212,10 +212,12 @@ void TcpConn::reconnect() {
     info("reconnect interval: %d will reconnect after %lld ms", reconnectInterval_, interval);
     getLoop()->runAfter(interval, [this, con]() {
         getLoop()->reconnectConns_.erase(con);
-        connect(getLoop(), destHost_, (unsigned short) destPort_, connectTimeout_, localIp_);
+        connect(getLoop(), destHost_, destPort_, connectTimeout_, localIp_);
     });
     delete channel_;
     channel_ = NULL;
 }
+
+
 
 }  // namespace titan

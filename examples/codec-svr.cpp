@@ -5,10 +5,10 @@ using namespace titan;
 
 int main(int argc, const char *argv[]) {
     Logger::getLogger().setLogLevel(Logger::LTRACE);
-    EventLoop base;
-    Signal::signal(SIGINT, [&] { base.exit(); });
+    EventLoop loop;
+    Signal::signal(SIGINT, [&] { loop.exit(); });
 
-    TcpServerPtr echo = TcpServer::startServer(&base, "", 2099);
+    TcpServerPtr echo = TcpServer::startServer(&loop, "", 2099);
     exitif(echo == NULL, "start tcp server failed");
     echo->setConnCreateCallback([] {
         TcpConnPtr con(new TcpConn);
@@ -18,6 +18,6 @@ int main(int argc, const char *argv[]) {
         });
         return con;
     });
-    base.loop();
+    loop.loop();
     info("program exited");
 }

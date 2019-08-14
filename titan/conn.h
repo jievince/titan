@@ -16,24 +16,22 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     };
     // Tcp构造函数，实际可用的连接应当通过createConnection创建
     TcpConn();
-    virtual ~TcpConn();
-    void connect(EventLoop *loop, const std::string &host, unsigned short port, int timeout, const std::string &localip);
+    ~TcpConn();
 
-    //可传入连接类型，返回智能指针
-    template <class C = TcpConn> // typedef std::shared_ptr<TcpConn> TcpConnPtr;
+    // 供给客户端用
     static TcpConnPtr createConnection(EventLoop *loop, const std::string &host, unsigned short port, int timeout = 0, const std::string &localip = "") {
-        TcpConnPtr con(new C); // default constructor
+        TcpConnPtr con(new TcpConn); // default constructor
         con->connect(loop, host, port, timeout, localip); // state_ is State::Invalid
         return con;
     }
-    template <class C = TcpConn>
+
     static TcpConnPtr createConnection(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer) { // fd is socket fd?
-        TcpConnPtr con(new C);
+        TcpConnPtr con(new TcpConn);
         con->attach(loop, fd, local, peer);
         return con;
     }
 
-    bool isClient() { return destPort_ > 0; }
+    bool isClient() { return isClient_; }
     // automatically managed context. allocated when first used, deleted when destruct
     template <class T>
     T &context() {
@@ -44,7 +42,7 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     State getState() { return state_; }
     // TcpConn的输入输出缓冲区
     Buffer &getInput() { return input_; }
-    Buffer &getOutput() { return output_; }
+    Buffer &getOutput() { return output_; }                   
 
     Channel *getChannel() { return channel_; }
     bool writable() { return channel_ ? channel_->writeEnabled() : false; }
@@ -90,8 +88,8 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
 
    public:
     EventLoop *loop_;
-    Channel *channel_;
-    Buffer input_, output_;
+    Channel *channel_; // 管理本连接的cfd
+    Buffer input_, output_; // 应用层输入输出缓冲区
     Ip4Addr local_, peer_;
     State state_;
     TcpCallback readcb_, writablecb_, statecb_;
@@ -99,23 +97,25 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     TimerId timeoutId_;
     AutoContext ctx_, internalCtx_;
     std::string destHost_, localIp_;
-    int destPort_, connectTimeout_, reconnectInterval_;
+    unsigned short destPort_;
+    bool isClient_;
+    int connectTimeout_, reconnectInterval_;
     int64_t connectedTime_;
     std::unique_ptr<CodecBase> codec_;
     void handleRead(const TcpConnPtr &con);
     void handleWrite(const TcpConnPtr &con);
     ssize_t isend(const char *buf, size_t len);
     void cleanup(const TcpConnPtr &con);
-    //void connect(EventLoop *base, const std::string &host, unsigned short port, int timeout, const std::string &localip);
-    void reconnect();
     void attach(EventLoop *base, int fd, Ip4Addr local, Ip4Addr peer);
-    virtual int readImp(int fd, void *buf, size_t bytes) { return ::read(fd, buf, bytes); }
-    virtual int writeImp(int fd, const void *buf, size_t bytes) { return ::write(fd, buf, bytes); }
-    virtual int handleHandshake(const TcpConnPtr &con);
+    void connect(EventLoop *base, const std::string &host, unsigned short port, int timeout, const std::string &localip);
+    void reconnect();
+    int readImp(int fd, void *buf, size_t bytes) { return ::read(fd, buf, bytes); }
+    int writeImp(int fd, const void *buf, size_t bytes) { return ::write(fd, buf, bytes); }
+    int handleHandshake(const TcpConnPtr &con);
 };
 
 // Tcp服务器
-// 支持单线程TcpServer和多线程TcpServer. 单线程的TcpServer的EventLoop是与所有TcpConn所共享的; 
+// 单线程的TcpServer的EventLoop是与所有TcpConn所共享的; 
 // 多线程的TcpServer自己的EventLoop只用来接受新连接, 而新连接会用其他EventLoop来执行IO.
 struct TcpServer : private noncopyable { // TcpServer融合了acceptor
     TcpServer(EventLoopBases *bases);
@@ -125,7 +125,7 @@ struct TcpServer : private noncopyable { // TcpServer融合了acceptor
     ~TcpServer() { delete listen_channel_; }
     Ip4Addr getAddr() { return addr_; }
     EventLoop *getLoop() { return loop_; }
-    void setConnCreateCallback(const std::function<TcpConnPtr()> &cb) { createcb_ = cb; }
+    void setConnCreateCallback(const std::function<TcpConnPtr()> &cb) { createcb_ = cb; } // 拷贝赋值运算符
     void setConnStateCallback(const TcpCallback &cb) { statecb_ = cb; }
     void setConnReadCallback(const TcpCallback &cb) { readcb_ = cb; assert(!msgcb_); }
     void setConnMsgCallback(CodecBase *codec, const MsgCallback &cb) { // 消息处理与Read回调冲突，只能调用一个
@@ -144,7 +144,7 @@ struct TcpServer : private noncopyable { // TcpServer融合了acceptor
     std::function<TcpConnPtr()> createcb_;
     std::unique_ptr<CodecBase> codec_;
     void handleAccept();
-    void addNewConn(EventLoop *newLoop, int cfd, sockaddr_in local, sockaddr_in peer); // 为新的cfd关联一个TcpConn对象
+    void addNewConn(EventLoop *newLoop, int fd, sockaddr_in local, sockaddr_in peer); // 为新的cfd关联一个TcpConn对象
 };
 
 }  // namespace titan
