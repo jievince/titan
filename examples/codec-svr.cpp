@@ -10,7 +10,7 @@ int main(int argc, const char *argv[]) {
 
     TcpServerPtr echo = TcpServer::startServer(&loop, "", 2099);
     exitif(echo == NULL, "start tcp server failed");
-    echo->setConnCreateCallback([] {
+    echo->setTcpConnCreateCallback([] {
         TcpConnPtr con(new TcpConn);
         con->setMsgCallback(new LengthCodec, [](const TcpConnPtr &con, Slice msg) {
             info("recv msg: %.*s", (int) msg.size(), msg.data());

@@ -1,6 +1,6 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
-#include "conn.h"
+#include "tcp_conn.h"
 #include "event_loop.h"
 #include "logging.h"
 #include "util.h"
@@ -47,7 +47,7 @@ void PollerEpoll::updateChannel(Channel *ch) {
 }
 
 void PollerEpoll::removeChannel(Channel *ch) {
-    trace("deleting channel %lld fd %d epoll %d", (long long) ch->id(), ch->fd(), epfd_);
+    trace("removing channel %lld fd %d epoll %d", (long long) ch->id(), ch->fd(), epfd_);
     liveChannels_.erase(ch); // 删除ch指针
     /* A file descriptor is removed from an epoll set only after all the file descriptors 
     referring to the underlying open file description have been closed 
@@ -65,7 +65,7 @@ void PollerEpoll::loop_once(int waitMs) {
     int64_t ticks = util::timeMilli();
     lastActive_ = epoll_wait(epfd_, activeEvs_, kMaxEvents, waitMs);
     int64_t used = util::timeMilli() - ticks;
-    trace("epoll wait %d return %d errno %d used %lld millsecond", waitMs, lastActive_, errno, (long long) used);
+    trace("epoll wait %d return %d errno %d(%s) used %lld millsecond", waitMs, lastActive_, errno, strerror(errno), (long long) used);
     fatalif(lastActive_ == -1 && errno != EINTR, "epoll return error %d %s", errno, strerror(errno));
     while (--lastActive_ >= 0) {
         int i = lastActive_;

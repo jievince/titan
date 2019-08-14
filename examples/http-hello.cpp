@@ -9,8 +9,8 @@ int main(int argc, const char *argv[]) {
         threads = atoi(argv[1]);
     }
     setloglevel("TRACE");
-    EventLoopThreadPool base(threads); // one event loop one thread
-    HttpServer sample(&base);
+    EventLoopThreadPool loops(threads); // one event loop one thread
+    HttpServer sample(&loops);
     int r = sample.bind("", 8081);
     exitif(r, "bind failed %d %s", errno, strerror(errno));
     sample.onGet("/hello", [](const HttpConnPtr &con) {
@@ -22,7 +22,7 @@ int main(int argc, const char *argv[]) {
             con->close();
         }
     });
-    Signal::signal(SIGINT, [&] { base.exit(); });
-    base.loop();
+    Signal::signal(SIGINT, [&] { loops.exit(); });
+    loops.loop();
     return 0;
 }

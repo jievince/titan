@@ -2,7 +2,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <map>
-#include "conn.h"
+#include "tcp_conn.h"
 #include "logging.h"
 #include "poller.h"
 #include "util.h"
@@ -12,13 +12,7 @@ using namespace std;
 
 namespace titan {
 
-struct IdleIdImp {
-    IdleIdImp() {}
-    typedef list<IdleNode>::iterator Iter;
-    IdleIdImp(list<IdleNode> *lst, Iter iter) : lst_(lst), iter_(iter) {}
-    list<IdleNode> *lst_;
-    Iter iter_;
-};
+struct IdleImp;
 
 EventLoop::EventLoop(int taskCap)
         : poller_(new PollerEpoll()), exit_(false), nextTimeout_(1 << 30), tasks_(taskCap), timerSeq_(0), idleEnabled(false) {
@@ -34,7 +28,7 @@ EventLoop::EventLoop(int taskCap)
             while (tasks_.pop_wait(&task, 0)) {
                 task();
             }
-        } else if (r == 0) {
+        } else if (r == 0) { // Channel::close() => handleRead()
             delete ch;
         } else if (errno == EINTR) {
         } else {
@@ -189,35 +183,5 @@ void titanUnregisterIdle(EventLoop *loop, const IdleId &idle) {
 void titanUpdateIdle(EventLoop *loop, const IdleId &idle) {
     loop->updateIdle(idle);
 }
-
-TcpConn::TcpConn()
-    : loop_(NULL), channel_(NULL), state_(State::Invalid), isClient_(false), connectTimeout_(0), reconnectInterval_(-1), connectedTime_(util::timeMilli()) {}
-
-TcpConn::~TcpConn() {
-    trace("tcp destroyed %s - %s", local_.toString().c_str(), peer_.toString().c_str());
-    delete channel_;
-}
-
-void TcpConn::addIdleCB(int idle, const TcpCallback &cb) {
-    if (channel_) {
-        idleIds_.push_back(getLoop()->registerIdle(idle, shared_from_this(), cb));
-    }
-}
-
-void TcpConn::reconnect() {
-    auto con = shared_from_this();
-    getLoop()->reconnectConns_.insert(con);
-    long long interval = reconnectInterval_ - (util::timeMilli() - connectedTime_);
-    interval = interval > 0 ? interval : 0;
-    info("reconnect interval: %d will reconnect after %lld ms", reconnectInterval_, interval);
-    getLoop()->runAfter(interval, [this, con]() {
-        getLoop()->reconnectConns_.erase(con);
-        connect(getLoop(), destHost_, destPort_, connectTimeout_, localIp_);
-    });
-    delete channel_;
-    channel_ = NULL;
-}
-
-
 
 }  // namespace titan

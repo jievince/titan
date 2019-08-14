@@ -9,7 +9,7 @@ namespace titan {
 Channel::Channel(EventLoop *loop, int fd, int events) : loop_(loop), fd_(fd), events_(events) {
     fatalif(net::setNonBlock(fd_) < 0, "channel set non block failed");
     static atomic<int64_t> id(0);
-    id_ = ++id;
+    id_ = id++;
     loop_->poller_->addChannel(this);
 }
 
@@ -54,7 +54,7 @@ void Channel::close() { // poller并不拥有channel, channel在析构之前必�
         trace("close channel %ld fd %d", (long) id_, fd_);
         loop_->poller_->removeChannel(this);
         ::close(fd_);
-        fd_ = -1;
+        fd_ = -1; // 避免多次delete channel
         handleRead();
     }
 }

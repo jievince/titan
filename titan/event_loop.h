@@ -1,4 +1,5 @@
 #pragma once
+#include <list>
 #include "titan-imp.h"
 #include "poller.h"
 
@@ -8,11 +9,21 @@ typedef std::shared_ptr<TcpConn> TcpConnPtr;
 typedef std::shared_ptr<TcpServer> TcpServerPtr;
 typedef std::function<void(const TcpConnPtr &)> TcpCallback;
 typedef std::function<void(const TcpConnPtr &, Slice msg)> MsgCallback;
+void titanUnregisterIdle(EventLoop *loop, const IdleId &idle);
+void titanUpdateIdle(EventLoop *loop, const IdleId &idle);
 
 struct IdleNode {
     TcpConnPtr con_;
     int64_t updated_; // 最后一次收到数据的时间???
     TcpCallback cb_;
+};
+
+struct IdleIdImp {
+    IdleIdImp() {}
+    typedef std::list<IdleNode>::iterator Iter;
+    IdleIdImp(std::list<IdleNode> *lst, Iter iter) : lst_(lst), iter_(iter) {}
+    std::list<IdleNode> *lst_;
+    Iter iter_;
 };
 
 struct EventLoopBases : private noncopyable {

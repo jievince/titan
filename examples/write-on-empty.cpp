@@ -25,7 +25,7 @@ int main(int argc, const char *argv[]) {
             bases.exit();
         }
     };
-    echo.setConnCreateCallback([sendcb]() {
+    echo.setTcpConnCreateCallback([sendcb]() {
         TcpConnPtr con(new TcpConn);
         con->setStateCallback([sendcb](const TcpConnPtr &con) {
             if (con->getState() == TcpConn::Connected) {

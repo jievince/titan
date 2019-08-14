@@ -237,7 +237,7 @@ HttpServer::HttpServer(EventLoopBases *bases) : TcpServer(bases) {
         con.sendResponse();
     };
     conncb_ = [] { return TcpConnPtr(new TcpConn); };
-    setConnCreateCallback([this]() {
+    setTcpConnCreateCallback([this]() {
         HttpConnPtr hcon(conncb_());
         hcon.onHttpMsg([this](const HttpConnPtr &hcon) {
             HttpRequest &req = hcon.getRequest();

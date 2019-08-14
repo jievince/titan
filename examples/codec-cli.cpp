@@ -5,9 +5,9 @@ using namespace titan;
 
 int main(int argc, const char *argv[]) {
     setloglevel("TRACE");
-    EventLoop base;
-    Signal::signal(SIGINT, [&] { base.exit(); });
-    TcpConnPtr con = TcpConn::createConnection(&base, "127.0.0.1", 2099, 3000);
+    EventLoop loop;
+    Signal::signal(SIGINT, [&] { loop.exit(); });
+    TcpConnPtr con = TcpConn::createConnection(&loop, "127.0.0.1", 2099, 3000);
     con->setReconnectInterval(3000);
     con->setMsgCallback(new LengthCodec, [](const TcpConnPtr &con, Slice msg) { info("recv msg: %.*s", (int) msg.size(), msg.data()); });
     con->setStateCallback([=](const TcpConnPtr &con) {
@@ -16,6 +16,6 @@ int main(int argc, const char *argv[]) {
             con->sendMsg("hello");
         }
     });
-    base.loop();
+    loop.loop();
     info("program exited");
 }

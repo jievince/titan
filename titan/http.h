@@ -1,8 +1,9 @@
 #pragma once
 
 #include <map>
-#include "conn.h"
+#include "tcp_conn.h"
 #include "slice.h"
+#include "tcp_server.h"
 
 namespace titan {
 
@@ -128,7 +129,7 @@ typedef HttpConnPtr::HttpCallback HttpCallback;
 struct HttpServer : public TcpServer {
     HttpServer(EventLoopBases *base);
     template <class Conn = TcpConn>
-    void setConnType() {
+    void setTcpConnType() {
         conncb_ = [] { return TcpConnPtr(new Conn); };
     }
     void onGet(const std::string &uri, const HttpCallback &cb) { cbs_["GET"][uri] = cb; }
