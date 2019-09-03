@@ -29,6 +29,7 @@ EventLoop::EventLoop(int taskCap)
                 task();
             }
         } else if (r == 0) { // Channel::close() => handleRead()
+            trace("delete wakeup channel");
             delete ch;
         } else if (errno == EINTR) {
         } else {
@@ -39,7 +40,7 @@ EventLoop::EventLoop(int taskCap)
 
 EventLoop::~EventLoop() {
     delete poller_;  
-    ::close(wakeupFds_[1]); // ::close(wakeupFds_[0]);
+    ::close(wakeupFds_[1]);
 }
 
 void EventLoop::loop() {
@@ -114,7 +115,7 @@ TimerId EventLoop::runAt(int64_t milli, Task &&task, int64_t interval) { // 添�
         timers_.insert({tid, std::move(task)});
     }
 
-    updateNextTimeOut();
+    updateNextTimeOut();  // handleTimeOuts()之后和下一次loop()之间添加定时器时, 需要更新nextTimeOut_.
     return tid;
 }
 

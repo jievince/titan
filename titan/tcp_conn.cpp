@@ -35,7 +35,7 @@ void TcpConn::reconnect() {
         getLoop()->reconnectConns_.erase(con);
         connect(getLoop(), destHost_, destPort_, connectTimeout_, localIp_);
     });
-    delete channel_;
+    delete channel_; // "肉体还在, 灵魂不在了"
     channel_ = NULL;
 }
 
@@ -98,7 +98,7 @@ void TcpConn::connect(EventLoop *loop, const string &host, unsigned short port, 
     }
 }
 
-void TcpConn::close() {
+void TcpConn::close() { // thread-safe
     if (channel_) {
         TcpConnPtr con = shared_from_this();
         getLoop()->safeCall([con] {
@@ -117,7 +117,7 @@ void TcpConn::cleanup(const TcpConnPtr &con) {
     } else {
         state_ = State::Closed;
     }
-    trace("tcp closing %s - %s fd %d %d", local_.toString().c_str(), peer_.toString().c_str(), channel_ ? channel_->fd() : -1, errno);
+    trace("tcp closing %s - %s fd %d errno %d(%s)", local_.toString().c_str(), peer_.toString().c_str(), channel_ ? channel_->fd() : -1, errno, strerror(errno));
     getLoop()->cancel(timeoutId_);
     if (statecb_) {
         statecb_(con);
@@ -160,7 +160,7 @@ void TcpConn::handleRead(const TcpConnPtr &con) {
                     readcb_(con);
                 }
                 break;
-            } else if (channel_->fd() == -1 || rd == 0 || rd == -1) { // titan只有一种关闭连接的方法: 被动关闭. 即对方先关闭连接, 本地read返回0
+            } else if (channel_->fd() == -1 || rd == 0 || rd == -1) { // channel_->fd() == -1: Channel::close() => handleRead(); titan只有一种关闭连接的方法: 被动关闭. 即对方先关闭连接, 本地read返回0
                 cleanup(con);
                 break;
             } else {

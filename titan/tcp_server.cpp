@@ -108,6 +108,9 @@ void TcpServer::addNewConn(EventLoop *newLoop, int fd, sockaddr_in local, sockad
     if (readcb_) {
         con->setReadCallback(readcb_);
     }
+    if (codec_) {
+        con->codec_.reset(codec_.get());
+    }
 };
 
 } // namespace titan

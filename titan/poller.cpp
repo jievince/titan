@@ -19,7 +19,7 @@ PollerEpoll::PollerEpoll() : lastActive_(-1) {
 PollerEpoll::~PollerEpoll() { // 销毁poller的同时会销毁掉poller所关注的channel
     info("destroying poller %d", epfd_);
     while (liveChannels_.size()) {
-        (*liveChannels_.begin())->close();
+        (*liveChannels_.begin())->close(); // Channel::close();
     }
     ::close(epfd_);
     info("poller %d destroyed", epfd_);
