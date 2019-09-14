@@ -99,7 +99,7 @@ void TcpServer::handleAccept() {
     }
 }
 
-void TcpServer::addNewConn(EventLoop *newLoop, int fd, sockaddr_in local, sockaddr_in peer) {
+void TcpServer::addNewConn(EventLoop *newLoop, int fd, Ip4Addr local, Ip4Addr peer) {
     TcpConnPtr con = createcb_();
     con->attach(newLoop, fd, local, peer);
     if (statecb_) {

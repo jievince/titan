@@ -29,7 +29,7 @@ struct TcpServer : private noncopyable { // TcpServer融合了acceptor
     TcpCallback statecb_, readcb_;
     std::unique_ptr<CodecBase> codec_;
     void handleAccept();
-    void addNewConn(EventLoop *newLoop, int fd, sockaddr_in local, sockaddr_in peer); // 为新的cfd关联一个TcpConn对象
+    void addNewConn(EventLoop *newLoop, int fd, Ip4Addr local, Ip4Addr peer);  // 为新的cfd关联一个TcpConn对象
 };
 
 } // namespace titan

@@ -16,8 +16,8 @@ int main(int argc, const char *argv[]) {
     });
     TcpConnPtr con1 = TcpConn::createConnection(&loop, "localhost", 2099);
     con1->setReconnectInterval(300);
-    //    TcpConnPtr con2 = TcpConn::createConnection(&loop, "localhost", 1, 100);
-    //    con2->setReconnectInterval(200);
+       TcpConnPtr con2 = TcpConn::createConnection(&loop, "localhost", 1, 100);
+       con2->setReconnectInterval(200);
     loop.runAfter(600, [&]() { loop.exit(); });
     loop.loop();
 }

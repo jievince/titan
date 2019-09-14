@@ -48,7 +48,7 @@ void TcpConn::attach(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer) {
     peer_ = peer;
     delete channel_;
     channel_ = new Channel(loop, fd, kWriteEvent | kReadEvent); //
-    trace("tcp constructed %s - %s fd: %d", local_.toString().c_str(), peer_.toString().c_str(), fd);
+    trace("tcp constructed %s - %s fd %d", local_.toString().c_str(), peer_.toString().c_str(), fd);
     TcpConnPtr con = shared_from_this();
     con->channel_->setReadCallback([=] { con->handleRead(con); });
     con->channel_->setWriteCallback([=] { con->handleWrite(con); });
@@ -66,10 +66,10 @@ void TcpConn::connect(EventLoop *loop, const string &host, unsigned short port, 
     int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     fatalif(fd < 0, "socket failed %d %s", errno, strerror(errno));
     int r = 0;
-    if (localip.size()) {
-        Ip4Addr addr(localip, 0);
+    if (localip.size()) { // client bind ip地址
+        Ip4Addr addr(localip, 0); // sin_port置0, 会自动分配未占用端口号
         r = ::bind(fd, (struct sockaddr *) &addr.getAddr(), sizeof(struct sockaddr));
-        error("bind to %s failed error %d %s", addr.toString().c_str(), errno, strerror(errno));
+        error("bind to %s failed error %d %s", addr.toString().c_str(), errno, strerror(errno)); // bug
     }
     if (r == 0) {
         r = ::connect(fd, (sockaddr *) &addr.getAddr(), sizeof(sockaddr_in));
@@ -197,6 +197,18 @@ int TcpConn::handleHandshake(const TcpConnPtr &con) {
     pfd.events = POLLOUT | POLLERR;
     int r = poll(&pfd, 1, 0); // use poll or select to check if the connection is successfully established
     if (r == 1 && pfd.revents == POLLOUT) { // socket is writable
+        int err = 0;
+        socklen_t len = sizeof(errno);
+        r = getsockopt(channel_->fd(), SOL_SOCKET, SO_ERROR, &err, (socklen_t*)&len);
+        if (r < 0) {
+            error("getsockname failed %d %s", errno, strerror(errno));
+            return -1;
+        }
+        if (err != 0) {
+            trace("fd %d connect failed %d %s ", channel_->fd(), err, strerror(err));
+            cleanup(con);
+            return -1;
+        }
         state_ = State::Connected;
         channel_->enableReadWrite(true, false); // this connection is connected successfully! No need to care for KWriteEvent.
         connectedTime_ = util::timeMilli();

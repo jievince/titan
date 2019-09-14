@@ -26,6 +26,13 @@ struct IdleIdImp {
     Iter iter_;
 };
 
+struct TimerRepeatable {
+    int64_t at;  // current timer timeout timestamp
+    int64_t interval;
+    TimerId timerid; // 此timerId就是timers_中的key
+    Task cb;
+};
+
 struct EventLoopBases : private noncopyable {
     virtual EventLoop *allocEventLoop() = 0;
 };
@@ -53,7 +60,7 @@ struct EventLoop : public EventLoopBases {
     bool cancel(TimerId timerid);
     void handleTimeouts(); // 处理超时定时器
     void updateNextTimeOut();
-    void onRepeatableTimer(int64_t milli, int64_t interval, Task &&task);
+    void onRepeatableTimer(TimerRepeatable *tr);
 
     // 下列函数为线程安全的
     void exit() {
@@ -77,6 +84,7 @@ struct EventLoop : public EventLoopBases {
     int nextTimeout_;
     SafeQueue<Task> tasks_; // task中的任务是在IO线程被wakeup()后, 执行的回调函数readcb_中执行的.
     std::map<TimerId, Task> timers_; // 定时器队列: 定时器包含一次性和重复性定时器
+    std::map<TimerId, TimerRepeatable> timerReps_; // 重复任务队列
     std::atomic<int64_t> timerSeq_; // 定时器序号
     // 记录每个idle时间（单位秒）下所有的连接。链表中的所有连接，最新的插入到链表末尾。连接若有活动，会把连接从链表中移到链表尾部，做法参考memcache
     std::map<int, std::list<IdleNode>> idleConns_;

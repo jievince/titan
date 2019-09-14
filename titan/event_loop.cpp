@@ -104,28 +104,40 @@ TimerId EventLoop::runAt(int64_t milli, Task &&task, int64_t interval) { // 添�
         return TimerId();
     }
 
-    TimerId tid{milli, ++timerSeq_};
-    if (interval) {
-        Task repeatableTask = std::bind(
-                [this, milli, interval] (Task &task) { onRepeatableTimer(milli, interval, std::move(task)); },
-                std::move(task)
-            );
-        timers_.insert({tid, repeatableTask});
+    if (interval) { // interval=0表示一次性任务，否则为重复任务
+        TimerId tid{-milli, ++timerSeq_};
+        TimerRepeatable &rtr = timerReps_[tid]; // std::map T& operator[]( const Key& key );
+        rtr = {milli, interval, {milli, ++timerSeq_}, std::move(task)};
+        TimerRepeatable *tr = &rtr;
+        timers_[tr->timerid] = [this, tr] { onRepeatableTimer(tr); };
+        updateNextTimeOut();
+        return tid;
     } else {
+        TimerId tid{milli, ++timerSeq_}; // 使用+- milli, 来区分是否为重复任务
         timers_.insert({tid, std::move(task)});
+        updateNextTimeOut();
+        return tid;
     }
-
-    updateNextTimeOut();  // handleTimeOuts()之后和下一次loop()之间添加定时器时, 需要更新nextTimeOut_.
-    return tid;
 }
 
 bool EventLoop::cancel(TimerId timerid) {
-    auto p = timers_.find(timerid);
-    if (p != timers_.end()) {
-        timers_.erase(p);
+    if (timerid.first < 0) { // 重复任务
+        auto p = timerReps_.find(timerid); 
+        if (p == timerReps_.end()) return false;
+        auto ptimer = timers_.find(p->second.timerid);
+        if (ptimer != timers_.end()) {
+            timers_.erase(ptimer);
+        }
+        timerReps_.erase(p);
         return true;
+    } else { // milli>0, 一次性任务
+        auto p = timers_.find(timerid);
+        if (p != timers_.end()) {
+            timers_.erase(p);
+            return true;
+        }
+        return false;
     }
-    return false;
 }
 
 void EventLoop::handleTimeouts() { //getExpired: 同步执行已到期的Timer, 并在timers_移除它们...
@@ -150,15 +162,12 @@ void EventLoop::updateNextTimeOut() { // 更新距离当前时刻最近的定时
 }
 
 // 重复性定时器到期时执行的task.
-void EventLoop::onRepeatableTimer(int64_t milli, int64_t interval, Task &&task) { // 更新并添加重复任务到timers_, 然后执行一次该任务
-    int64_t nextAt = milli + interval;
-    TimerId tid{nextAt, ++timerSeq_};
-    Task repeatableTask = std::bind(
-            [this, nextAt, interval] (Task &task) { onRepeatableTimer(nextAt, interval, std::move(task)); },
-            std::move(task)
-        );
-    timers_.insert({tid, repeatableTask});
-    task();
+void EventLoop::onRepeatableTimer(TimerRepeatable *tr) {
+    tr->at += tr->interval;
+    tr->timerid = {tr->at, ++timerSeq_};
+    timers_[tr->timerid] = [this, tr] { onRepeatableTimer(tr); }; // map.insert(重复任务下一次发生时的Task)
+    updateNextTimeOut();
+    tr->cb(); // 执行重复任务
 }
 
 void EventLoop::safeCall(Task &&task) { // 跨线程添加计算任务. void addTask(Task &&task)
