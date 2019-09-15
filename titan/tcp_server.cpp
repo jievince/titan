@@ -36,7 +36,7 @@ TcpServerPtr TcpServer::startServer(EventLoopBases *bases, const std::string &ho
     TcpServerPtr p(new TcpServer(bases));
     int r = p->bind(host, port, reusePort);
     if (r) {
-        error("bind to %s:%d failed %d %s", host.c_str(), port, errno, strerror(errno));
+        error("bind to %s:%d failed %d(%s)", host.c_str(), port, errno, strerror(errno));
     }
     return r == 0 ? p : NULL;
 }

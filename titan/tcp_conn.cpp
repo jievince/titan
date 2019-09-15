@@ -183,7 +183,7 @@ void TcpConn::handleWrite(const TcpConnPtr &con) {
             writablecb_(con);
         }
         if (output_.empty() && channel_->writeEnabled()) {  // writablecb_ may write something
-            channel_->enableWrite(false); // 一旦发送完毕数据, 立刻停止writable事件, 避免busy loop
+            channel_->enableWrite(false); // 一旦发送完毕数据(output_ Buffer中的数据), 立刻停止writable事件, 避免busy loop
         }
     } else {
         error("handle write unexpected");
@@ -269,6 +269,7 @@ void TcpConn::send(Buffer &buf) {
 
 void TcpConn::send(const char *buf, size_t len) {
     if (channel_) {
+        // 为了保证数据的有效性, 如果output_ Buffer中仍有(上次的)数据未发送, 则不能使用isend直接发送数据, 而应append到output_中.
         if (output_.empty()) {
             ssize_t sended = isend(buf, len);
             buf += sended;

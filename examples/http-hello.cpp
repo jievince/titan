@@ -12,7 +12,7 @@ int main(int argc, const char *argv[]) {
     EventLoopThreadPool loops(threads); // one event loop one thread
     HttpServer sample(&loops);
     int r = sample.bind("", 8081);
-    exitif(r, "bind failed %d %s", errno, strerror(errno));
+    exitif(r, "bind failed %d(%s)", errno, strerror(errno));
     sample.onGet("/hello", [](const HttpConnPtr &con) {
         string v = con.getRequest().version;
         HttpResponse resp;

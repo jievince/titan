@@ -3,6 +3,8 @@
 #include <fcntl.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <string>
 #include "logging.h"
 #include "util.h"
@@ -50,7 +52,7 @@ Ip4Addr::Ip4Addr(const string &host, unsigned short port) {
     addr_.sin_port = htons(port);
     if (host.size()) {
         addr_.sin_addr = port::getHostByName(host);
-    } else {
+    } else { // ""
         addr_.sin_addr.s_addr = INADDR_ANY;
     }
     if (addr_.sin_addr.s_addr == INADDR_NONE) {
@@ -59,13 +61,11 @@ Ip4Addr::Ip4Addr(const string &host, unsigned short port) {
 }
 
 string Ip4Addr::toString() const {
-    uint32_t uip = addr_.sin_addr.s_addr;
-    return util::format("%d.%d.%d.%d:%d", (uip >> 0) & 0xff, (uip >> 8) & 0xff, (uip >> 16) & 0xff, (uip >> 24) & 0xff, ntohs(addr_.sin_port));
+    return util::format("%s:%d", inet_ntoa(addr_.sin_addr), ntohs(addr_.sin_port));
 }
 
 string Ip4Addr::ip() const {
-    uint32_t uip = addr_.sin_addr.s_addr;
-    return util::format("%d.%d.%d.%d", (uip >> 0) & 0xff, (uip >> 8) & 0xff, (uip >> 16) & 0xff, (uip >> 24) & 0xff);
+    return util::format("%s", inet_ntoa(addr_.sin_addr));
 }
 
 unsigned short Ip4Addr::port() const {

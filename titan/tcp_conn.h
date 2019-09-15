@@ -21,6 +21,7 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     // 供给客户端用
     static TcpConnPtr createConnection(EventLoop *loop, const std::string &host, unsigned short port, int timeout = 0, const std::string &localip = "") {
         TcpConnPtr con(new TcpConn); // default constructor
+        info("creating new connection connecting to host %s port %d", host.c_str(), port);
         con->connect(loop, host, port, timeout, localip); // state_ is State::Invalid
         return con;
     }
@@ -109,9 +110,9 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     void attach(EventLoop *base, int fd, Ip4Addr local, Ip4Addr peer);
     void connect(EventLoop *base, const std::string &host, unsigned short port, int timeout, const std::string &localip);
     void reconnect();
-    int readImp(int fd, void *buf, size_t bytes) { return ::read(fd, buf, bytes); }
-    int writeImp(int fd, const void *buf, size_t bytes) { return ::write(fd, buf, bytes); }
-    int handleHandshake(const TcpConnPtr &con);
+    virtual int readImp(int fd, void *buf, size_t bytes) { return ::read(fd, buf, bytes); }
+    virtual int writeImp(int fd, const void *buf, size_t bytes) { return ::write(fd, buf, bytes); }
+    virtual int handleHandshake(const TcpConnPtr &con);
 };
 
 }  // namespace titan
