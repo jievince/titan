@@ -4,14 +4,12 @@
 
 namespace titan {
 
-/* 通道，封装了可以进行epoll的一个fd
-  每个channel对象自始至终只属于一个EventLoop, 而one Event loop(one event base) one thread, 所以channel只属于一个IO线程. 
-  每个channel对象自始至终只负责一个文件描述符fd的IO事件分发(不管理fd的生命周期).
-  channel会把不同的IO事件分发为不同的回调, 如readcb_, writecb_.
-  因为channel自始至终只会属于一个IO线程, channel的成员函数只能在IO线程中调用, 因此更新数据成员不必加锁
+/* 通道，封装了可以进行epoll的一个fd, channel会把不同的IO事件分发为不同的回调, 如readcb_, writecb_; 
+  每个channel对象自始至终只负责一个文件描述符fd的IO事件分发;
+  每个channel对象自始至终只属于一个EventLoop, 而one Event loop one thread, 所以channel只属于一个IO线程; 
 */
 struct Channel : private noncopyable {
-    // base为事件管理器，fd为通道内部的fd，events为通道关心的事件
+    // loop_为事件管理器，fd为通道关心的fd，events为通道关心的事件
     Channel(EventLoop *loop, int fd, int events);
     ~Channel();
     EventLoop *getLoop() { return loop_; }
@@ -44,7 +42,7 @@ struct Channel : private noncopyable {
     int fd_;
     short events_;
     int64_t id_;
-    std::function<void()> readcb_, writecb_, errorcb_;
+    std::function<void()> readcb_, writecb_;
 };
 
 }  // namespace titan

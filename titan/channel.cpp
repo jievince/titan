@@ -49,7 +49,7 @@ void Channel::enableReadWrite(bool readable, bool writable) {
     loop_->poller_->updateChannel(this);
 }
 
-void Channel::close() { // poller并不拥有channel, channel在析构之前必须自己从poller中ungister(removeChannel), 避免造成空悬指针
+void Channel::close() { // poller并不拥有channel, channel在析构之前必须自己从poller中unregister(removeChannel), 避免造成空悬指针
     if (fd_ >= 0) {
         trace("close channel %ld fd %d", (long) id_, fd_);
         loop_->poller_->removeChannel(this);

@@ -7,6 +7,10 @@
 #include <utility>
 #include <vector>
 #include <map>
+#include <netinet/in.h>
+#include <algorithm>
+#include "port_posix.h"
+#include "slice.h"
 
 namespace titan {
 
@@ -36,12 +40,41 @@ struct util {
     static int addFdFlag(int fd, int flag);
 };
 
-struct ExitCaller : private noncopyable {
-    ~ExitCaller() { functor_(); }
-    ExitCaller(std::function<void()> &&functor) : functor_(std::move(functor)) {}
+struct net {
+    template <class T>
+    static T hton(T v) {
+        return port::htobe(v);
+    }
+    template <class T>
+    static T ntoh(T v) {
+        return port::htobe(v);
+    }
+    static int setNonBlock(int fd, bool value = true);
+    static int setReuseAddr(int fd, bool value = true);
+    static int setReusePort(int fd, bool value = true);
+    static int setNoDelay(int fd, bool value = true);
+};
+
+struct Ip4Addr {
+    Ip4Addr(const std::string &host, unsigned short port);
+    Ip4Addr(unsigned short port = 0) : Ip4Addr("", port) {}
+    Ip4Addr(const struct sockaddr_in &addr) : addr_(addr){};
+    std::string toString() const;
+    std::string ip() const; // 点分十进制ip
+    unsigned short port() const;
+    unsigned int ipInt() const;
+    // if you pass a hostname to constructor, then use this to check error
+    bool isIpValid() const;
+    struct sockaddr_in &getAddr() {
+        return addr_;
+    }
+    static std::string hostToIp(const std::string &host) {
+        Ip4Addr addr(host, 0);
+        return addr.ip();
+    }
 
    private:
-    std::function<void()> functor_;
+    struct sockaddr_in addr_;
 };
 
 struct Signal {
@@ -51,6 +84,14 @@ struct Signal {
     static void signal_handler(int sig) {
         handlers[sig]();
     }
+};
+
+struct ExitCaller : private noncopyable {
+    ~ExitCaller() { functor_(); }
+    ExitCaller(std::function<void()> &&functor) : functor_(std::move(functor)) {}
+
+   private:
+    std::function<void()> functor_;
 };
 
 }  // namespace titan

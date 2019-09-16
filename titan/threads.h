@@ -80,7 +80,7 @@ bool SafeQueue<T>::push(T &&v) {
         return false;
     }
     items_.push_back(std::move(v));
-    ready_.notify_one(); // 唤醒某个等待(wait)线程。如果当前没有等待线程，则该函数什么也不做，如果同时存在多个等待线程，则唤醒某个线程是不确定的
+    ready_.notify_one(); // 唤醒某个等待(wait)线程. 如果当前没有等待线程，则该函数什么也不做，如果同时存在多个等待线程，则唤醒某个线程是不确定的
     return true;
 }
 template <typename T>

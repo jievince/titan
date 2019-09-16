@@ -18,7 +18,7 @@ using namespace std;
 
 namespace titan {
 
-Logger::Logger() : level_(LINFO), lastRotate_(time(NULL)), rotateInterval_(86400) {
+Logger::Logger() : level_(LINFO), lastRotate_(time(NULL)), rotateInterval_(86400) { // 24h = 86400s
     tzset();
     fd_ = -1;
     realRotate_ = lastRotate_;
@@ -80,7 +80,7 @@ void Logger::maybeRotate() {
     struct tm ntm;
     localtime_r(&now, &ntm);
     char newname[4096];
-    snprintf(newname, sizeof(newname), "%s.%d%02d%02d%02d%02d", filename_.c_str(), ntm.tm_year + 1900, ntm.tm_mon + 1, ntm.tm_mday, ntm.tm_hour, ntm.tm_min);
+    snprintf(newname, sizeof(newname), "%s.%04d%02d%02d%02d%02d", filename_.c_str(), ntm.tm_year + 1900, ntm.tm_mon + 1, ntm.tm_mday, ntm.tm_hour, ntm.tm_min);
     const char *oldname = filename_.c_str();
     int err = rename(oldname, newname);
     if (err != 0) {
@@ -105,7 +105,7 @@ void Logger::logv(int level, const char *file, int line, const char *func, const
         return;
     }
     maybeRotate();
-    char buffer[4 * 1024];
+    char buffer[4 * 1024]; // write() buffer大小小于内核缓冲区大小时, write是原子的
     char *p = buffer;
     char *limit = buffer + sizeof(buffer);
 

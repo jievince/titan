@@ -1,5 +1,5 @@
 #pragma once
-#include "net.h"
+#include "buffer.h"
 #include "slice.h"
 namespace titan {
 

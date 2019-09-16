@@ -1,10 +1,17 @@
 #include "util.h"
+#include "logging.h"
 #include <fcntl.h>
 #include <stdarg.h>
 #include <algorithm>
 #include <chrono>
 #include <memory>
 #include <map>
+#include <errno.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <string>
 
 using namespace std;
 
@@ -64,6 +71,73 @@ std::string util::readableTime(time_t t) {
 int util::addFdFlag(int fd, int flag) {
     int ret = fcntl(fd, F_GETFD);
     return fcntl(fd, F_SETFD, ret | flag);
+}
+
+int net::setNonBlock(int fd, bool value) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
+        return errno;
+    }
+    if (value) {
+        return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+    return fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+}
+
+int net::setReuseAddr(int fd, bool value) {
+    int flag = value;
+    int len = sizeof flag;
+    return setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &flag, len);
+}
+
+int net::setReusePort(int fd, bool value) {
+#ifndef SO_REUSEPORT
+    fatalif(value, "SO_REUSEPORT not supported");
+    return 0;
+#else
+    int flag = value;
+    int len = sizeof flag;
+    return setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &flag, len);
+#endif
+}
+
+int net::setNoDelay(int fd, bool value) {
+    int flag = value;
+    int len = sizeof flag;
+    return setsockopt(fd, SOL_SOCKET, TCP_NODELAY, &flag, len);
+}
+
+Ip4Addr::Ip4Addr(const string &host, unsigned short port) {
+    memset(&addr_, 0, sizeof addr_);
+    addr_.sin_family = AF_INET;
+    addr_.sin_port = htons(port);
+    if (host.size()) {
+        addr_.sin_addr = port::getHostByName(host);
+    } else { // ""
+        addr_.sin_addr.s_addr = INADDR_ANY;
+    }
+    if (addr_.sin_addr.s_addr == INADDR_NONE) {
+        error("cannot resove %s to ip", host.c_str());
+    }
+}
+
+string Ip4Addr::toString() const {
+    return util::format("%s:%d", inet_ntoa(addr_.sin_addr), ntohs(addr_.sin_port));
+}
+
+string Ip4Addr::ip() const {
+    return util::format("%s", inet_ntoa(addr_.sin_addr));
+}
+
+unsigned short Ip4Addr::port() const {
+    return (unsigned short)ntohs(addr_.sin_port);
+}
+
+unsigned int Ip4Addr::ipInt() const {
+    return ntohl(addr_.sin_addr.s_addr);
+}
+bool Ip4Addr::isIpValid() const {
+    return addr_.sin_addr.s_addr != INADDR_NONE;
 }
 
 std::map<int, std::function<void()>> Signal::handlers{};

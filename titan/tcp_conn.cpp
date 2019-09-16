@@ -127,7 +127,7 @@ void TcpConn::cleanup(const TcpConnPtr &con) {
         return;
     }
     for (auto &idle : idleIds_) {
-        titanUnregisterIdle(getLoop(), idle);
+        getLoop()->unregisterIdle(idle);
     }
     // channel may have hold TcpConnPtr, set channel_ to NULL before delete
     readcb_ = writablecb_ = statecb_ = nullptr;
@@ -154,7 +154,7 @@ void TcpConn::handleRead(const TcpConnPtr &con) {
                 continue;
             } else if (rd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 for (auto &idle : idleIds_) {
-                    titanUpdateIdle(getLoop(), idle);
+                    getLoop()->updateIdle(idle);
                 }
                 if (readcb_ && input_.size()) { // 读完数据后调用readcb_从input_ Buffer中解码出消息, 执行回调
                     readcb_(con);

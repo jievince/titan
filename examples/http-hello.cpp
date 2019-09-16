@@ -9,7 +9,7 @@ int main(int argc, const char *argv[]) {
         threads = atoi(argv[1]);
     }
     setloglevel("TRACE");
-    EventLoopThreadPool loops(threads); // one event loop one thread
+    MultiEventLoops loops(threads); // one event loop one thread
     HttpServer sample(&loops);
     int r = sample.bind("", 8081);
     exitif(r, "bind failed %d(%s)", errno, strerror(errno));

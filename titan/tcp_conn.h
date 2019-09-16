@@ -4,6 +4,24 @@
 
 namespace titan {
 
+struct AutoContext : noncopyable {
+    void *ctx;
+    Task ctxDel;
+    AutoContext() : ctx(0) {}
+    template <class T>
+    T &context() {
+        if (ctx == NULL) {
+            ctx = new T();
+            ctxDel = [this] { delete (T *) ctx; };
+        }
+        return *(T *) ctx;
+    }
+    ~AutoContext() {
+        if (ctx)
+            ctxDel();
+    }
+};
+
 // Tcp连接，使用引用计数
 struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyable {
     // Tcp连接的5个状态
@@ -78,7 +96,7 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     //设置重连时间间隔，-1: 不重连，0:立即重连，其它：等待毫秒数，未设置不重连
     void setReconnectInterval(int milli) { reconnectInterval_ = milli; }
 
-    //!慎用。立即关闭连接，清理相关资源，可能导致该连接的引用计数变为0，从而使当前调用者引用的连接被析构
+    //!慎用. 立即关闭连接，清理相关资源，可能导致该连接的引用计数变为0，从而使当前调用者引用的连接被析构
     void closeNow() {
         if (channel_)
             channel_->close();
@@ -107,8 +125,8 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     void handleWrite(const TcpConnPtr &con);
     ssize_t isend(const char *buf, size_t len);
     void cleanup(const TcpConnPtr &con);
-    void attach(EventLoop *base, int fd, Ip4Addr local, Ip4Addr peer);
-    void connect(EventLoop *base, const std::string &host, unsigned short port, int timeout, const std::string &localip);
+    void attach(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer);
+    void connect(EventLoop *loop, const std::string &host, unsigned short port, int timeout, const std::string &localip);
     void reconnect();
     virtual int readImp(int fd, void *buf, size_t bytes) { return ::read(fd, buf, bytes); }
     virtual int writeImp(int fd, const void *buf, size_t bytes) { return ::write(fd, buf, bytes); }

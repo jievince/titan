@@ -15,7 +15,7 @@ namespace titan {
 struct IdleImp;
 
 EventLoop::EventLoop(int taskCap)
-        : poller_(new PollerEpoll()), exit_(false), nextTimeout_(1 << 30), tasks_(taskCap), timerSeq_(0), idleEnabled(false) {
+        : poller_(new EpollPoller()), exit_(false), nextTimeout_(1 << 30), tasks_(taskCap), timerSeq_(0), idleEnabled(false) {
     int r = pipe2(wakeupFds_, O_CLOEXEC);
     fatalif(r, "pipe2 failed %d %s", errno, strerror(errno));
     trace("wakeup pipe created %d %d", wakeupFds_[0], wakeupFds_[1]);
@@ -66,7 +66,7 @@ IdleId EventLoop::registerIdle(int idle, const TcpConnPtr &con, const TcpCallbac
         idleEnabled = true;
     }
     auto &lst = idleConns_[idle];
-    lst.push_back(IdleNode{con, util::timeMilli() / 1000, move(cb)});
+    lst.push_back(IdleNode{con, util::timeMilli() / 1000, std::move(cb)});
     trace("register idle");
     return IdleId(new IdleIdImp(&lst, --lst.end())); // 使用IdleNode所在链表和指向它的迭代器来表示它.
 }
@@ -82,7 +82,7 @@ void EventLoop::updateIdle(const IdleId &id) {
     id->lst_->splice(id->lst_->end(), *id->lst_, id->iter_);
 }
 
-void EventLoop::callIdles() { // idleConns_按照寿命由小到大排序, 寿命相同的连接链表按照updated从小到大排序
+void EventLoop::callIdles() { // idleConns_按照idle由小到大排序, idle相同的连接链表按照updated从小到大排序
     int64_t now = util::timeMilli() / 1000;
     for (auto &l : idleConns_) {
         int idle = l.first;
@@ -140,11 +140,11 @@ bool EventLoop::cancel(TimerId timerid) {
     }
 }
 
-void EventLoop::handleTimeouts() { //getExpired: 同步执行已到期的Timer, 并在timers_移除它们...
+void EventLoop::handleTimeouts() {
     int64_t now = util::timeMilli();
     TimerId tid{now, 1L << 62};
     while (timers_.size() && timers_.begin()->first < tid) {
-        Task task = move(timers_.begin()->second);
+        Task task = std::move(timers_.begin()->second);
         timers_.erase(timers_.begin()); // std::map.erase O(log(n))
         task();
     }
@@ -175,7 +175,7 @@ void EventLoop::safeCall(Task &&task) { // 跨线程添加计算任务. void add
     wakeup(); // IO线程唤醒之后, 就会执行tasks_中的任务
 }
 
-void EventLoopThreadPool::loop() {
+void MultiEventLoops::loop() {
     int sz = loops_.size();
     for (int i = 0; i < sz - 1; i++) {
         threads_[i] = std::thread([this, i] { loops_[i].loop(); }); // explicit thread( Function&& f, Args&&... args );
@@ -184,14 +184,6 @@ void EventLoopThreadPool::loop() {
     for (int i = 0; i < sz - 1; i++) {
         threads_[i].join();
     }
-}
-
-void titanUnregisterIdle(EventLoop *loop, const IdleId &idle) {
-    loop->unregisterIdle(idle);
-}
-
-void titanUpdateIdle(EventLoop *loop, const IdleId &idle) {
-    loop->updateIdle(idle);
 }
 
 }  // namespace titan

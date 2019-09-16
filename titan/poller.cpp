@@ -8,15 +8,15 @@
 
 namespace titan {
 
-PollerEpoll::PollerEpoll() : lastActive_(-1) {
+EpollPoller::EpollPoller() : lastActive_(-1) {
     static std::atomic<int64_t> id(0);
-    id_ = ++id;
+    id_ = id++;
     epfd_ = epoll_create1(EPOLL_CLOEXEC);
     fatalif(epfd_ < 0, "epoll_create error %d %s", errno, strerror(errno));
     info("poller epoll %d created", epfd_);
 }
 
-PollerEpoll::~PollerEpoll() { // 销毁poller的同时会销毁掉poller所关注的channel
+EpollPoller::~EpollPoller() { // 销毁poller的同时会销毁掉poller所关注的channel
     info("destroying poller %d", epfd_);
     while (liveChannels_.size()) {
         (*liveChannels_.begin())->close(); // Channel::close();
@@ -25,7 +25,7 @@ PollerEpoll::~PollerEpoll() { // 销毁poller的同时会销毁掉poller所关�
     info("poller %d destroyed", epfd_);
 }
 
-void PollerEpoll::addChannel(Channel *ch) {
+void EpollPoller::addChannel(Channel *ch) {
     struct epoll_event ev;
     memset(&ev, 0, sizeof(ev));
     ev.events = ch->events();
@@ -36,7 +36,7 @@ void PollerEpoll::addChannel(Channel *ch) {
     liveChannels_.insert(ch);
 }
 
-void PollerEpoll::updateChannel(Channel *ch) {
+void EpollPoller::updateChannel(Channel *ch) {
     struct epoll_event ev;
     memset(&ev, 0, sizeof(ev));
     ev.events = ch->events();
@@ -46,13 +46,12 @@ void PollerEpoll::updateChannel(Channel *ch) {
     fatalif(r, "epoll_ctl mod failed %d %s", errno, strerror(errno));
 }
 
-void PollerEpoll::removeChannel(Channel *ch) {
+/* Close a file descriptor(!all fd refers to the same open file discription is closed) 
+    will automatically removed it from an epoll set
+*/
+void EpollPoller::removeChannel(Channel *ch) {
     trace("removing channel %lld fd %d epoll %d", (long long) ch->id(), ch->fd(), epfd_);
     liveChannels_.erase(ch); // 删除ch指针
-    /* A file descriptor is removed from an epoll set only after all the file descriptors 
-    referring to the underlying open file description have been closed 
-    (or before if the descriptor is explicitly removed using epoll_ctl(2) EPOLL_CTL_DEL). */
-    // removeChannel是可以被跨线程调用的, 所以removeChannel有可能发生在epoll_wait返回后到遍历到该channel之间
     for (int i = lastActive_ - 1; i >= 0; i--) {
         if (ch == activeEvs_[i].data.ptr) {
             activeEvs_[i].data.ptr = NULL;
@@ -61,7 +60,7 @@ void PollerEpoll::removeChannel(Channel *ch) {
     }
 }
 
-void PollerEpoll::loop_once(int waitMs) {
+void EpollPoller::loop_once(int waitMs) {
     int64_t ticks = util::timeMilli();
     lastActive_ = epoll_wait(epfd_, activeEvs_, kMaxEvents, waitMs);
     int64_t used = util::timeMilli() - ticks;
@@ -71,16 +70,16 @@ void PollerEpoll::loop_once(int waitMs) {
         int i = lastActive_;
         Channel *ch = (Channel *) activeEvs_[i].data.ptr;
         int events = activeEvs_[i].events;
-        if (ch) { // 若之前removeChannel(ch), 则ch==NULL
+        if (ch) { // 若在epoll_wait返回后, removeChannel(ch), 则此时ch==NULL
             if (events & kWriteEvent) {
                 trace("channel %lld fd %d handle write", (long long) ch->id(), ch->fd());
                 ch->handleWrite();
             }
-            if (events & (kReadEvent | EPOLLERR)) {
+            if (events & kReadEvent) {
                 trace("channel %lld fd %d handle read", (long long) ch->id(), ch->fd());
                 ch->handleRead();
             }
-            if (!(events & (kReadEvent | kWriteEvent | EPOLLERR))){
+            if (!(events & (kReadEvent | kWriteEvent))){
                 fatal("unexpected poller events");
             }
         }

@@ -84,7 +84,7 @@ void TcpServer::handleAccept() {
         fatalif(r, "addFdFlag FD_CLOEXEC failed");
         /* 为cfd连接分配的EventLoop有2种策略: 
             a). 程序只用了一个EventLoop, 在这一个线程的一个EventLoop上同时处理accept新连接和在已有的连接上read/write
-            b). EventLoopThreadPool. 一个主IO线程的EventLoop用来处理新连接, 并且为每个新连接分配一个独占的EventLoop, 
+            b). MultiEventLoops. 一个主IO线程的EventLoop用来处理新连接, 并且为每个新连接分配一个独占的EventLoop, 
              并在一个新的线程上运行这个EventLoop 
         */
         EventLoop *newLoop = bases_->allocEventLoop(); 

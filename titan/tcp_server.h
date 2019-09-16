@@ -22,7 +22,7 @@ struct TcpServer : private noncopyable { // TcpServer融合了acceptor
 
    private:
     EventLoop *loop_;
-    EventLoopBases *bases_; // EventLoop or EventLoopThreadPool
+    EventLoopBases *bases_; // EventLoop or MultiEventLoops
     Ip4Addr addr_;
     Channel *listen_channel_;
     std::function<TcpConnPtr()> createcb_; // 创建tcp连接时的callback

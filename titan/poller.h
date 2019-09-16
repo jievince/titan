@@ -13,11 +13,10 @@ const int kMaxEvents = 2000;
 const int kReadEvent = EPOLLIN;
 const int kWriteEvent = EPOLLOUT;
 
-// poller class是IO multiplexing的封装
-// 每个EventLoop都有自己的poller, 用id_标识它.
-struct PollerEpoll : private noncopyable {
-    PollerEpoll();
-    ~PollerEpoll();
+// poller class是IO multiplexing的封装, 每个EventLoop都有一个的poller
+struct EpollPoller : private noncopyable {
+    EpollPoller();
+    ~EpollPoller();
     void addChannel(Channel *ch);
     void removeChannel(Channel *ch);
     void updateChannel(Channel *ch);
@@ -25,11 +24,10 @@ struct PollerEpoll : private noncopyable {
     void loop_once(int waitMs);
 
     int64_t id_;
-    int lastActive_;
     int epfd_; // epoll fd
     std::set<Channel *> liveChannels_; // poller所关心的channel列表
-    // for epoll selected active events
-    struct epoll_event activeEvs_[kMaxEvents];
+    int lastActive_; 
+    struct epoll_event activeEvs_[kMaxEvents]; // for epoll selected active events
 };
 
 }  // namespace titan
