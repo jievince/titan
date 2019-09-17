@@ -75,8 +75,8 @@ void SafeQueue<T>::exit() {
 
 template <typename T>
 bool SafeQueue<T>::push(T &&v) {
-    std::lock_guard<std::mutex> lk(*this); // 给SafeQueue类对象上锁, 保证同一时刻只有一个线程访问该对象
-    if (exit_ || (capacity_ && items_.size() >= capacity_)) { // 如果已经退出或者队列中的任务数有限制并且实际大小==容量, 则没法儿插入新的
+    std::lock_guard<std::mutex> lk(*this);
+    if (exit_ || (capacity_ && items_.size() >= capacity_)) {
         return false;
     }
     items_.push_back(std::move(v));
@@ -85,7 +85,7 @@ bool SafeQueue<T>::push(T &&v) {
 }
 template <typename T>
 void SafeQueue<T>::wait_ready(std::unique_lock<std::mutex> &lk, int waitMs) {
-    if (exit_ || !items_.empty()) { // 如果已经退出或者队列非空...
+    if (exit_ || !items_.empty()) {
         return;
     }
     if (waitMs == wait_infinite) {

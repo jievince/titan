@@ -71,7 +71,7 @@ struct EventLoop : public EventLoopBases {
     void safeCall(const Task &task) { safeCall(Task(task)); }
     void wakeup() {
         int r = write(wakeupFds_[1], "", 1);
-        fatalif(r <= 0, "write error wd %d %d %s", r, errno, strerror(errno));
+        fatalif(r <= 0, "write error wd %d %d(%s)", r, errno, strerror(errno));
     }
     //分配一个事件派发器
     virtual EventLoop *allocEventLoop() { return this; }

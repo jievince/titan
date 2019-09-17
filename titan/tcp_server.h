@@ -4,9 +4,9 @@
 
 namespace titan {
 
-// Tcp服务器
-// 单线程的TcpServer的EventLoop是与所有TcpConn所共享的; 
-// 多线程的TcpServer自己的EventLoop只用来接受新连接, 而新连接会用其他EventLoop来执行IO.
+/* 根据并发度, 一个程序可以只需要一个Eventloop去同时管理TcpServer和所有TcpConn, 
+ 也可以给TcpServer一个独有的Eventloop, 然后按照round-robin方法给TcpConn从Eventloop池子中分配一个Eventloop
+*/
 struct TcpServer : private noncopyable { // TcpServer融合了acceptor
     TcpServer(EventLoopBases *bases);
     ~TcpServer() { delete listen_channel_; }

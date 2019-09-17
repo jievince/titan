@@ -8,9 +8,6 @@
 using namespace std;
 namespace titan {
 
-//void titanUnregisterIdle(EventLoop *loop, const IdleId &idle);
-//void titanUpdateIdle(EventLoop *loop, const IdleId &idle);
-
 TcpConn::TcpConn()
     : loop_(NULL), channel_(NULL), state_(State::Invalid), isClient_(false), connectTimeout_(0), reconnectInterval_(-1), connectedTime_(util::timeMilli()) {}
 
@@ -47,7 +44,7 @@ void TcpConn::attach(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer) {
     local_ = local;
     peer_ = peer;
     delete channel_;
-    channel_ = new Channel(loop, fd, kWriteEvent | kReadEvent); //
+    channel_ = new Channel(loop, fd, kWriteEvent | kReadEvent);
     trace("tcp constructed %s - %s fd %d", local_.toString().c_str(), peer_.toString().c_str(), fd);
     TcpConnPtr con = shared_from_this();
     con->channel_->setReadCallback([=] { con->handleRead(con); });
@@ -55,7 +52,7 @@ void TcpConn::attach(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer) {
 }
 
 void TcpConn::connect(EventLoop *loop, const string &host, unsigned short port, int timeout, const string &localip) {
-    fatalif(state_ != State::Invalid && state_ != State::Closed && state_ != State::Failed, "current state is bad state to connect. state: %d", state_);
+    fatalif(state_ == State::Handshaking || state_ == State::Connected, "current state is bad state to connect. state: %d", state_);
     destHost_ = host;
     destPort_ = port;
     isClient_ = true;
@@ -69,12 +66,13 @@ void TcpConn::connect(EventLoop *loop, const string &host, unsigned short port, 
     if (localip.size()) { // client bind ip地址
         Ip4Addr addr(localip, 0); // sin_port置0, 会自动分配未占用端口号
         r = ::bind(fd, (struct sockaddr *) &addr.getAddr(), sizeof(struct sockaddr));
-        error("bind to %s failed error %d %s", addr.toString().c_str(), errno, strerror(errno)); // bug
+        if (r < 0)
+        error("bind to %s failed error %d(%s)", addr.toString().c_str(), errno, strerror(errno)); // bug
     }
     if (r == 0) {
         r = ::connect(fd, (sockaddr *) &addr.getAddr(), sizeof(sockaddr_in));
         if (r != 0 && errno != EINPROGRESS) {
-            error("connect to %s error %d %s", addr.toString().c_str(), errno, strerror(errno));
+            error("connect to %s error %d(%s)", addr.toString().c_str(), errno, strerror(errno));
         }
     }
 
@@ -129,8 +127,8 @@ void TcpConn::cleanup(const TcpConnPtr &con) {
     for (auto &idle : idleIds_) {
         getLoop()->unregisterIdle(idle);
     }
-    // channel may have hold TcpConnPtr, set channel_ to NULL before delete
     readcb_ = writablecb_ = statecb_ = nullptr;
+    // channel may have hold TcpConnPtr, set channel_ to NULL before delete
     Channel *ch = channel_;
     channel_ = NULL;
     delete ch;
@@ -139,37 +137,34 @@ void TcpConn::cleanup(const TcpConnPtr &con) {
 void TcpConn::handleRead(const TcpConnPtr &con) {
     if (state_ == State::Handshaking) {
          handleHandshake(con);
-    } else if (state_ == State::Connected) {
-        while (1) {
-            input_.makeRoom();
-            int rd = 0;
-            if (channel_->fd() >= 0) {
-                rd = readImp(channel_->fd(), input_.end(), input_.space());
-                trace("channel %lld fd %d readed %d bytes", (long long) channel_->id(), channel_->fd(), rd);
-            }
-            if (rd > 0) {
-                input_.addSize(rd);
-                continue;
-            } else if (rd == -1 && errno == EINTR) {
-                continue;
-            } else if (rd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                for (auto &idle : idleIds_) {
-                    getLoop()->updateIdle(idle);
-                }
-                if (readcb_ && input_.size()) { // 读完数据后调用readcb_从input_ Buffer中解码出消息, 执行回调
-                    readcb_(con);
-                }
-                break;
-            } else if (channel_->fd() == -1 || rd == 0 || rd == -1) { // channel_->fd() == -1: Channel::close() => handleRead(); titan只有一种关闭连接的方法: 被动关闭. 即对方先关闭连接, 本地read返回0
-                cleanup(con);
-                break;
-            } else {
-                error("read error: channel %lld fd %d rd %ld %d %s", (long long) channel_->id(), channel_->fd(), rd, errno, strerror(errno));
-                break;
-            }
+    } 
+    while (state_ == State::Connected) {
+        input_.makeRoom();
+        int rd = 0;
+        if (channel_->fd() >= 0) {
+            rd = readImp(channel_->fd(), input_.end(), input_.space());
+            trace("channel %lld fd %d readed %d bytes", (long long) channel_->id(), channel_->fd(), rd);
         }
-    } else {
-        error("handle read unexpected");
+        if (rd > 0) {
+            input_.addSize(rd);
+            continue;
+        } else if (rd == -1 && errno == EINTR) {
+            continue;
+        } else if (rd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            for (auto &idle : idleIds_) {
+                getLoop()->updateIdle(idle);
+            }
+            if (readcb_ && input_.size()) { // 读完数据后调用readcb_从input_ Buffer中解码出消息, 执行回调
+                readcb_(con);
+            }
+            break;
+        } else if (channel_->fd() == -1 || rd == 0 || rd == -1) {
+            cleanup(con);
+            break;
+        } else {
+            error("read error: channel %lld fd %d rd %ld %d %s", (long long) channel_->id(), channel_->fd(), rd, errno, strerror(errno));
+            break;
+        }
     }
 }
 
@@ -179,7 +174,7 @@ void TcpConn::handleWrite(const TcpConnPtr &con) {
     } else if (state_ == State::Connected) {
         ssize_t sended = isend(output_.begin(), output_.size());
         output_.consume(sended);
-        if (output_.empty() && writablecb_) { // WirteCompleteCallback
+        if (output_.empty() && writablecb_) {
             writablecb_(con);
         }
         if (output_.empty() && channel_->writeEnabled()) {  // writablecb_ may write something
@@ -202,10 +197,11 @@ int TcpConn::handleHandshake(const TcpConnPtr &con) {
         r = getsockopt(channel_->fd(), SOL_SOCKET, SO_ERROR, &err, (socklen_t*)&len);
         if (r < 0) {
             error("getsockname failed %d %s", errno, strerror(errno));
+            cleanup(con);
             return -1;
         }
         if (err != 0) {
-            trace("fd %d connect failed %d %s ", channel_->fd(), err, strerror(err));
+            error("fd %d connect failed %d(%)s ", channel_->fd(), err, strerror(err));
             cleanup(con);
             return -1;
         }

@@ -12,12 +12,10 @@ using namespace std;
 
 namespace titan {
 
-struct IdleImp;
-
 EventLoop::EventLoop(int taskCap)
         : poller_(new EpollPoller()), exit_(false), nextTimeout_(1 << 30), tasks_(taskCap), timerSeq_(0), idleEnabled(false) {
     int r = pipe2(wakeupFds_, O_CLOEXEC);
-    fatalif(r, "pipe2 failed %d %s", errno, strerror(errno));
+    fatalif(r, "pipe2 failed %d(%s)", errno, strerror(errno));
     trace("wakeup pipe created %d %d", wakeupFds_[0], wakeupFds_[1]);
     Channel *ch = new Channel(this, wakeupFds_[0], kReadEvent);
     ch->setReadCallback([=] {

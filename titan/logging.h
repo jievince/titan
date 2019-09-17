@@ -34,12 +34,6 @@
             hlog(Logger::LFATAL, __VA_ARGS__); \
         }                                      \
     } while (0)
-#define check(b, ...)                          \
-    do {                                       \
-        if ((b)) {                             \
-            hlog(Logger::LFATAL, __VA_ARGS__); \
-        }                                      \
-    } while (0)
 #define exitif(b, ...)                         \
     do {                                       \
         if ((b)) {                             \

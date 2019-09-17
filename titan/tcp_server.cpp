@@ -66,7 +66,7 @@ void TcpServer::handleAccept() {
     socklen_t rsz = sizeof(raddr);
     int lfd = listen_channel_->fd();
     int cfd;
-    // non-block accept returns cfd > 0 + poll() returns cfd is writable: connection is establised
+    // when non-block accept returns cfd > 0 and poll() returns cfd is writable: connection is establised
     while (lfd >= 0 && (cfd = accept(lfd, (struct sockaddr *) &raddr, &rsz)) >= 0) { // accept策略: 读一个, 读N个, 读完
         sockaddr_in local, peer;
         socklen_t alen = sizeof(peer);
@@ -83,9 +83,9 @@ void TcpServer::handleAccept() {
         r = util::addFdFlag(cfd, FD_CLOEXEC);
         fatalif(r, "addFdFlag FD_CLOEXEC failed");
         /* 为cfd连接分配的EventLoop有2种策略: 
-            a). 程序只用了一个EventLoop, 在这一个线程的一个EventLoop上同时处理accept新连接和在已有的连接上read/write
-            b). MultiEventLoops. 一个主IO线程的EventLoop用来处理新连接, 并且为每个新连接分配一个独占的EventLoop, 
-             并在一个新的线程上运行这个EventLoop 
+            a). 程序只用了一个EventLoop, 在这一个线程的一个EventLoop上同时处理accept新连接和旧连接数据的read/write
+            b). MultiEventLoops. 一个主IO线程的EventLoop用来处理新连接, 并且为每个新连接分配一个EventLoop, 
+             并在一个新的线程上运行这个EventLoop, 这个Eventloop可能管理多个连接 数据读写
         */
         EventLoop *newLoop = bases_->allocEventLoop(); 
         if (newLoop == loop_) {

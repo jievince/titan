@@ -12,7 +12,7 @@ EpollPoller::EpollPoller() : lastActive_(-1) {
     static std::atomic<int64_t> id(0);
     id_ = id++;
     epfd_ = epoll_create1(EPOLL_CLOEXEC);
-    fatalif(epfd_ < 0, "epoll_create error %d %s", errno, strerror(errno));
+    fatalif(epfd_ < 0, "epoll_create error %d(%s)", errno, strerror(errno));
     info("poller epoll %d created", epfd_);
 }
 
@@ -32,7 +32,7 @@ void EpollPoller::addChannel(Channel *ch) {
     ev.data.ptr = ch;
     trace("adding channel %lld fd %d events %d epoll %d", (long long) ch->id(), ch->fd(), ev.events, epfd_);
     int r = epoll_ctl(epfd_, EPOLL_CTL_ADD, ch->fd(), &ev);
-    fatalif(r, "epoll_ctl add failed %d %s", errno, strerror(errno));
+    fatalif(r, "epoll_ctl add failed %d(%s)", errno, strerror(errno));
     liveChannels_.insert(ch);
 }
 
@@ -43,7 +43,7 @@ void EpollPoller::updateChannel(Channel *ch) {
     ev.data.ptr = ch;
     trace("modifying channel %lld fd %d events read %d write %d epoll %d", (long long) ch->id(), ch->fd(), ev.events & EPOLLIN, ev.events & EPOLLOUT, epfd_);
     int r = epoll_ctl(epfd_, EPOLL_CTL_MOD, ch->fd(), &ev);
-    fatalif(r, "epoll_ctl mod failed %d %s", errno, strerror(errno));
+    fatalif(r, "epoll_ctl mod failed %d(%s)", errno, strerror(errno));
 }
 
 /* Close a file descriptor(!all fd refers to the same open file discription is closed) 
@@ -65,7 +65,7 @@ void EpollPoller::loop_once(int waitMs) {
     lastActive_ = epoll_wait(epfd_, activeEvs_, kMaxEvents, waitMs);
     int64_t used = util::timeMilli() - ticks;
     trace("epoll wait %d return %d errno %d(%s) used %lld millsecond", waitMs, lastActive_, errno, strerror(errno), (long long) used);
-    fatalif(lastActive_ == -1 && errno != EINTR, "epoll return error %d %s", errno, strerror(errno));
+    fatalif(lastActive_ == -1 && errno != EINTR, "epoll return error %d(%s)", errno, strerror(errno));
     while (--lastActive_ >= 0) {
         int i = lastActive_;
         Channel *ch = (Channel *) activeEvs_[i].data.ptr;

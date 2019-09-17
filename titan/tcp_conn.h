@@ -32,7 +32,7 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
         Closed,
         Failed,
     };
-    // Tcp构造函数，实际可用的连接应当通过createConnection创建
+    // Tcp构造函数, 实际可用的连接应当通过createConnection创建
     TcpConn();
     ~TcpConn();
 
@@ -44,7 +44,8 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
         return con;
     }
 
-    static TcpConnPtr createConnection(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer) { // fd is socket fd?
+    // 供给客户端用
+    static TcpConnPtr createConnection(EventLoop *loop, int fd, Ip4Addr local, Ip4Addr peer) {
         TcpConnPtr con(new TcpConn);
         con->attach(loop, fd, local, peer);
         return con;
@@ -103,7 +104,7 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     }
 
     //远程地址的字符串
-    std::string str() { return peer_.toString(); }
+    std::string peerAddrStr() { return peer_.toString(); }
 
    public:
     EventLoop *loop_;
@@ -115,7 +116,8 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
     std::list<IdleId> idleIds_;
     TimerId timeoutId_;
     AutoContext ctx_, internalCtx_;
-    std::string destHost_, localIp_;
+    std::string localIp_;
+    std::string destHost_;
     unsigned short destPort_;
     bool isClient_;
     int connectTimeout_, reconnectInterval_;
