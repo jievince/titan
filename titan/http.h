@@ -7,6 +7,10 @@
 namespace titan {
 
 // base class for HttpRequest and HttpResponse
+/*  |    报文首部     |
+    |   空行(CR+LF)  |
+    |    报文主体     |   
+*/
 struct HttpMsg {
     enum Result {
         Error,
@@ -36,7 +40,7 @@ struct HttpMsg {
 
    protected:
     bool complete_;
-    size_t contentLen_;
+    size_t contentLen_; // 报文主体长度
     size_t scanned_;
     Result tryDecode_(Slice buf, bool copyBody, Slice *line1);
     std::string getValueFromMap_(std::map<std::string, std::string> &m, const std::string &n);
@@ -61,8 +65,8 @@ struct HttpRequest : public HttpMsg {
 
 struct HttpResponse : public HttpMsg {
     HttpResponse() { clear(); }
-    std::string statusWord;
     int status;
+    std::string statusWord;
     void setNotFound() { setStatus(404, "Not Found"); }
     void setStatus(int st, const std::string &msg = "") {
         status = st;
@@ -111,7 +115,7 @@ struct HttpConnPtr {
     void sendFile(const std::string &filename) const;
     void clearData() const;
 
-    void onHttpMsg(const HttpCallback &cb) const;
+    void setHttpMsgCallback(const HttpCallback &cb) const;
 
    protected:
     struct HttpContext {
@@ -127,17 +131,12 @@ typedef HttpConnPtr::HttpCallback HttpCallback;
 // http服务器
 struct HttpServer : public TcpServer {
     HttpServer(EventLoopBases *base);
-    template <class Conn = TcpConn>
-    void setTcpConnType() {
-        conncb_ = [] { return TcpConnPtr(new Conn); };
-    }
-    void onGet(const std::string &uri, const HttpCallback &cb) { cbs_["GET"][uri] = cb; }
-    void onRequest(const std::string &method, const std::string &uri, const HttpCallback &cb) { cbs_[method][uri] = cb; }
-    void onDefault(const HttpCallback &cb) { defcb_ = cb; }
+    void setGetCallback(const std::string &uri, const HttpCallback &cb) { cbs_["GET"][uri] = cb; }
+    void setRequestCallback(const std::string &method, const std::string &uri, const HttpCallback &cb) { cbs_[method][uri] = cb; }
+    void setDefaultCallback(const HttpCallback &cb) { defcb_ = cb; }
 
    private:
     HttpCallback defcb_;
-    std::function<TcpConnPtr()> conncb_;
     std::map<std::string, std::map<std::string, HttpCallback>> cbs_;
 };
 

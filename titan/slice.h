@@ -72,7 +72,7 @@ inline Slice Slice::eatWord() {
 
 inline Slice Slice::eatLine() {
     const char *p = pb_;
-    while (pb_ < pe_ && *pb_ != '\n' && *pb_ != '\r') {
+    while (pb_ < pe_ && *pb_ != '\r' && *pb_ != '\n') {
         pb_++;
     }
     return Slice(p, pb_ - p);

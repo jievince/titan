@@ -22,6 +22,7 @@ string HttpMsg::getValueFromMap_(map<string, string> &m, const string &n) {
     return p == m.end() ? "" : p->second;
 }
 
+// 解析http报文
 HttpMsg::Result HttpMsg::tryDecode_(Slice buf, bool copyBody, Slice *line1) {
     if (complete_) {
         return Complete;
@@ -43,12 +44,12 @@ HttpMsg::Result HttpMsg::tryDecode_(Slice buf, bool copyBody, Slice *line1) {
 
         *line1 = req.eatLine();
         while (req.size()) {
-            req.eat(2);
+            req.eat(2); // skip "\r\n"
             Slice ln = req.eatLine();
             Slice k = ln.eatWord();
             ln.trimSpace();
             if (k.size() && ln.size() && k.back() == ':') {
-                for (size_t i = 0; i < k.size(); i++) {
+                for (size_t i = 0; i < k.size(); i++) { // cast the key to lower case
                     ((char *) k.data())[i] = tolower(k[i]);
                 }
                 headers[k.sub(0, -1)] = ln;
@@ -59,7 +60,7 @@ HttpMsg::Result HttpMsg::tryDecode_(Slice buf, bool copyBody, Slice *line1) {
                 return Error;
             }
         }
-        scanned_ += 4;
+        scanned_ += 4; // skip "\r\n\r\n"
         contentLen_ = atoi(getHeader("content-length").c_str());
         if (buf.size() < contentLen_ + scanned_ && getHeader("Expect").size()) {
             return Continue100;
@@ -176,7 +177,7 @@ void HttpConnPtr::sendFile(const string &filename) const {
     sendResponse();
 }
 
-void HttpConnPtr::onHttpMsg(const HttpCallback &cb) const {
+void HttpConnPtr::setHttpMsgCallback(const HttpCallback &cb) const {
     tcp->setReadCallback([cb](const TcpConnPtr &con) {
         HttpConnPtr hcon(con);
         hcon.handleRead(cb);
@@ -184,21 +185,7 @@ void HttpConnPtr::onHttpMsg(const HttpCallback &cb) const {
 }
 
 void HttpConnPtr::handleRead(const HttpCallback &cb) const {
-    if (!tcp->isClient()) {  // server
-        HttpRequest &req = getRequest();
-        HttpMsg::Result r = req.tryDecode(tcp->getInput());
-        if (r == HttpMsg::Error) {
-            tcp->close();
-            return;
-        }
-        if (r == HttpMsg::Continue100) {
-            tcp->send("HTTP/1.1 100 Continue\n\r\n");
-        } else if (r == HttpMsg::Complete) {
-            info("http request: %s %s %s", req.method.c_str(), req.query_uri.c_str(), req.version.c_str());
-            trace("http request:\n%.*s", (int) tcp->input_.size(), tcp->input_.data());
-            cb(*this);
-        }
-    } else {
+    if (tcp->isClient()) {
         HttpResponse &resp = getResponse();
         HttpMsg::Result r = resp.tryDecode(tcp->getInput());
         if (r == HttpMsg::Error) {
@@ -210,7 +197,21 @@ void HttpConnPtr::handleRead(const HttpCallback &cb) const {
             trace("http response:\n%.*s", (int) tcp->input_.size(), tcp->input_.data());
             cb(tcp);
         }
-    }
+    } else {  // server
+        HttpRequest &req = getRequest();
+        HttpMsg::Result r = req.tryDecode(tcp->getInput());
+        if (r == HttpMsg::Error) {
+            tcp->close();
+            return;
+        }
+        if (r == HttpMsg::Continue100) {
+            tcp->send("HTTP/1.1 100 Continue\n\r\n");
+        } else if (r == HttpMsg::Complete) {
+            info("http request: %s %s %s", req.method.c_str(), req.query_uri.c_str(), req.version.c_str());
+            trace("http request:\n%.*s", (int) tcp->input_.size(), tcp->input_.data());
+            cb(tcp);
+        }
+    } 
 }
 
 void HttpConnPtr::clearData() const {
@@ -236,10 +237,9 @@ HttpServer::HttpServer(EventLoopBases *bases) : TcpServer(bases) {
         resp.body = "Not Found";
         con.sendResponse();
     };
-    conncb_ = [] { return TcpConnPtr(new TcpConn); };
     setTcpConnCreateCallback([this]() {
-        HttpConnPtr hcon(conncb_());
-        hcon.onHttpMsg([this](const HttpConnPtr &hcon) {
+        HttpConnPtr hcon(TcpConnPtr(new TcpConn));
+        hcon.setHttpMsgCallback([this](const HttpConnPtr &hcon) {
             HttpRequest &req = hcon.getRequest();
             auto p = cbs_.find(req.method);
             if (p != cbs_.end()) {

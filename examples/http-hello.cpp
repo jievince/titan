@@ -10,10 +10,10 @@ int main(int argc, const char *argv[]) {
     }
     setloglevel("TRACE");
     MultiEventLoops loops(threads); // one event loop one thread
-    HttpServer sample(&loops);
-    int r = sample.bind("", 8081);
+    HttpServer svr(&loops);
+    int r = svr.bind("", 8081);
     exitif(r, "bind failed %d(%s)", errno, strerror(errno));
-    sample.onGet("/hello", [](const HttpConnPtr &con) {
+    svr.setGetCallback("/hello", [](const HttpConnPtr &con) {
         string v = con.getRequest().version;
         HttpResponse resp;
         resp.body = Slice("hello world");
