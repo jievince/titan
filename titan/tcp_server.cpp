@@ -95,7 +95,7 @@ void TcpServer::handleAccept() {
         }
     }
     if (lfd >= 0 && errno != EAGAIN && errno != EINTR) {
-        warn("accept return %d  %d %s", cfd, errno, strerror(errno));
+        warn("accept return %d  %d(%s)", cfd, errno, strerror(errno));
     }
 }
 

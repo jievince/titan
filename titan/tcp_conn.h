@@ -30,7 +30,7 @@ struct TcpConn : public std::enable_shared_from_this<TcpConn>, private noncopyab
         Handshaking,
         Connected,
         Closed,
-        Failed,
+        Failed
     };
     // Tcp构造函数, 实际可用的连接应当通过createConnection创建
     TcpConn();

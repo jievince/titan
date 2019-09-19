@@ -110,6 +110,7 @@ void TcpConn::cleanup(const TcpConnPtr &con) {
     if (readcb_ && input_.size()) {
         readcb_(con);
     }
+
     if (state_ == State::Handshaking) {
         state_ = State::Failed;
     } else {
